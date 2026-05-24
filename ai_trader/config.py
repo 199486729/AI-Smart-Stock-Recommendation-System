@@ -30,9 +30,9 @@ class AppConfig:
     """应用配置"""
     # 数据源配置
     data_sources: List[DataSourceConfig] = field(default_factory=lambda: [
-        DataSourceConfig(name="akshare", enabled=True, priority=1, weight=0.5),
-        DataSourceConfig(name="tushare", enabled=True, priority=2, weight=0.3),
-        DataSourceConfig(name="yfinance", enabled=True, priority=3, weight=0.2),
+        DataSourceConfig(name="akshare", enabled=True, priority=1, weight=1.0),
+        DataSourceConfig(name="tushare", enabled=False, priority=2, weight=0.3),
+        DataSourceConfig(name="yfinance", enabled=False, priority=3, weight=0.2),
     ])
     
     # 交叉验证配置

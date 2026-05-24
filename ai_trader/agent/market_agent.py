@@ -113,34 +113,48 @@ class MarketAgent:
         """Fetch real market data from Yahoo Finance."""
         ticker_str = self.SYMBOL_MAP.get(symbol, symbol)
 
-        ticker = yf.Ticker(ticker_str)
+        for attempt in range(3):
+            try:
+                ticker = yf.Ticker(ticker_str)
 
-        # Prefer 1h bars for better trend resolution; fall back to 1d
-        hist = ticker.history(period="5d", interval="1h")
-        if hist.empty:
-            hist = ticker.history(period="5d", interval="1d")
-        if hist.empty:
-            print(f"[MarketAgent] yfinance returned empty history for {ticker_str}")
-            return None
+                # Prefer 1h bars for better trend resolution; fall back to 1d
+                hist = ticker.history(period="5d", interval="1h")
+                if hist.empty:
+                    hist = ticker.history(period="5d", interval="1d")
+                if hist.empty:
+                    print(f"[MarketAgent] yfinance returned empty history for {ticker_str}")
+                    return None
 
-        close = hist["Close"].values.astype(float)
-        current_price = float(close[-1])
+                close = hist["Close"].values.astype(float)
+                current_price = float(close[-1])
 
-        # ---- trend + strength from moving average crossover ----
-        trend, trend_strength = self._compute_trend(close)
+                # ---- trend + strength from moving average crossover ----
+                trend, trend_strength = self._compute_trend(close)
 
-        return {
-            "symbol":  symbol,
-            "price":   round(current_price, 2),
-            "open":    round(float(hist["Open"].iloc[-1]), 2),
-            "high":    round(float(hist["High"].iloc[-1]), 2),
-            "low":     round(float(hist["Low"].iloc[-1]), 2),
-            "volume":  int(hist["Volume"].iloc[-1]) if "Volume" in hist else 0,
-            "trend":   trend,
-            "source":  "yfinance",
-            "timestamp": datetime.now().isoformat(),
-            "trend_strength": trend_strength,
-        }
+                return {
+                    "symbol":  symbol,
+                    "price":   round(current_price, 2),
+                    "open":    round(float(hist["Open"].iloc[-1]), 2),
+                    "high":    round(float(hist["High"].iloc[-1]), 2),
+                    "low":     round(float(hist["Low"].iloc[-1]), 2),
+                    "volume":  int(hist["Volume"].iloc[-1]) if "Volume" in hist else 0,
+                    "trend":   trend,
+                    "source":  "yfinance",
+                    "timestamp": datetime.now().isoformat(),
+                    "trend_strength": trend_strength,
+                }
+            except Exception as exc:
+                if ("rate limited" in str(exc).lower() or "too many requests" in str(exc).lower()) and attempt < 2:
+                    wait = (attempt + 1) * 5
+                    print(f"[MarketAgent] yfinance rate-limited, retrying in {wait}s...")
+                    time.sleep(wait)
+                elif attempt < 2:
+                    wait = 2
+                    print(f"[MarketAgent] yfinance error (attempt {attempt+1}/3): {exc}")
+                    time.sleep(wait)
+                else:
+                    raise
+        return None
 
     # ------------------------------------------------------------------
     # akshare / tushare stubs (ready for server deployment)
@@ -148,17 +162,50 @@ class MarketAgent:
 
     def _fetch_akshare(self, symbol: str) -> Optional[Dict]:
         """
-        Stub — install akshare and set AKSHARE_ENABLED=1 on the server.
+        Fetch gold price data from akshare (Shanghai Gold Exchange).
 
-        akshare is free and fast in mainland China. Example implementation:
-
-            import akshare as ak
-            df = ak.spot_gold(symbol="XAUUSD")
-            price = float(df.iloc[0]["latest_price"])
-            ...
+        Uses SGE Au99.99 spot as proxy for XAUUSD. Returns price in CNY/gram.
         """
-        print("[MarketAgent] akshare not configured; set AKSHARE_ENABLED=1 on server")
-        return None
+        try:
+            import akshare as ak
+        except ImportError:
+            print("[MarketAgent] akshare not installed; pip install akshare")
+            return None
+
+        # Map internal symbols to SGE symbols
+        sge_map = {
+            "XAUUSD": "Au99.99",
+            "XAGUSD": "Ag99.99",
+        }
+        sge_symbol = sge_map.get(symbol, symbol)
+
+        try:
+            df = ak.spot_hist_sge(symbol=sge_symbol)
+            if df.empty:
+                print(f"[MarketAgent] akshare returned empty data for {sge_symbol}")
+                return None
+
+            latest = df.iloc[-1]
+            close_prices = df["close"].values.astype(float)
+            current_price = float(close_prices[-1])
+
+            trend, trend_strength = self._compute_trend(close_prices)
+
+            return {
+                "symbol":  symbol,
+                "price":   round(current_price, 2),
+                "open":    round(float(latest["open"]), 2),
+                "high":    round(float(latest["high"]), 2),
+                "low":     round(float(latest["low"]), 2),
+                "volume":  0,  # SGE hist data doesn't include volume
+                "trend":   trend,
+                "source":  "akshare",
+                "timestamp": datetime.now().isoformat(),
+                "trend_strength": trend_strength,
+            }
+        except Exception as exc:
+            print(f"[MarketAgent] akshare error: {exc}")
+            return None
 
     def _fetch_tushare(self, symbol: str) -> Optional[Dict]:
         """
