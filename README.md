@@ -1,2 +1,1 @@
-# alphamind-ai-trader
-alphamind-ai-trader
+# AlphaMind AI Trader V2
