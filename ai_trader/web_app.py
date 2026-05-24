@@ -10,6 +10,12 @@ from flask import Flask, jsonify, render_template, request
 from ai_trader.agent.market_agent import MarketAgent
 from ai_trader.agent.signal_agent import SignalAgent
 from ai_trader.execution.paper_broker import PaperBroker
+from ai_trader.analysis.data_fetcher import fetch_all_data
+from ai_trader.analysis.market_state import compute_market_state
+from ai_trader.analysis.sector_ranker import rank_sectors
+from ai_trader.analysis.etf_screener import screen_etfs
+from ai_trader.analysis.stock_screener import screen_stocks
+from ai_trader.analysis.recommender import generate_recommendations
 
 app = Flask(__name__)
 
@@ -26,6 +32,17 @@ _state = {
     "error": None,
     "auto_trade": False,
 }
+
+_ashare_state = {
+    "market_state": None,
+    "ranked_sectors": None,
+    "recommendations": None,
+    "stocks": None,
+    "data_quality": None,
+    "last_updated": None,
+    "error": None,
+}
+
 
 _lock = threading.Lock()
 
@@ -52,6 +69,117 @@ def _run_cycle():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+# -----------------------------------------------------------------------
+# A-Share 智能推荐系统路由
+# -----------------------------------------------------------------------
+
+@app.route("/ashare")
+def ashare():
+    return render_template("ashare_dashboard.html")
+
+
+@app.route("/api/ashare/state")
+def api_ashare_state():
+    with _lock:
+        return jsonify({
+            "market_state": _ashare_state["market_state"],
+            "ranked_sectors": _ashare_state["ranked_sectors"],
+            "recommendations": _ashare_state["recommendations"],
+            "stocks": _ashare_state["stocks"],
+            "data_quality": _ashare_state["data_quality"],
+            "last_updated": _ashare_state["last_updated"],
+            "error": _ashare_state["error"],
+        })
+
+
+@app.route("/api/ashare/analyze", methods=["POST"])
+def api_ashare_analyze():
+    try:
+        # 1. 拉取全部数据
+        all_data = fetch_all_data()
+        errors = all_data.get("errors", [])
+
+        data_quality = {
+            "indices_ok": all_data.get("indices") is not None,
+            "breadth_ok": all_data.get("breadth") is not None,
+            "north_ok": all_data.get("north_flow") is not None,
+            "boards_ok": all_data.get("boards") is not None,
+            "industry_flow_ok": all_data.get("industry_flow") is not None,
+            "sectors_ok": all_data.get("sectors") is not None,
+            "etfs_ok": all_data.get("etfs") is not None,
+            "limit_up_ok": all_data.get("limit_up") is not None,
+            "stock_spot_ok": all_data.get("stock_spot") is not None,
+            "errors": errors,
+        }
+
+        # 2. 市场状态分类
+        market_state = compute_market_state(
+            indices=all_data.get("indices"),
+            breadth=all_data.get("breadth"),
+            north_flow=all_data.get("north_flow"),
+        )
+
+        # 3. 板块排名
+        sector_result = rank_sectors(
+            boards=all_data.get("boards"),
+            industry_flow=all_data.get("industry_flow"),
+            sectors=all_data.get("sectors"),
+        )
+
+        # 4. 个股筛选（优先）
+        screened_stocks = screen_stocks(
+            top_sectors=sector_result.get("top_sectors", []),
+            leading_stocks=sector_result.get("leading_stocks", []),
+            limit_up_pool=all_data.get("limit_up"),
+            stock_spot=all_data.get("stock_spot"),
+            max_deep_checks=80,
+            max_final=15,
+        )
+
+        # 5. ETF 筛选（作为补充）
+        etf_candidates = screen_etfs(
+            top_sectors=sector_result.get("top_sectors", []),
+            etfs=all_data.get("etfs"),
+        )
+
+        # 6. 生成推荐（个股优先）
+        recs = generate_recommendations(
+            market_state=market_state,
+            top_sectors=sector_result.get("top_sectors", []),
+            candidates=etf_candidates,
+            stocks=screened_stocks,
+            max_recs=10,
+        )
+
+        update_time = datetime.now().isoformat()
+
+        with _lock:
+            _ashare_state["market_state"] = market_state
+            _ashare_state["ranked_sectors"] = sector_result.get("top_sectors", [])
+            _ashare_state["recommendations"] = recs
+            _ashare_state["stocks"] = screened_stocks
+            _ashare_state["data_quality"] = data_quality
+            _ashare_state["last_updated"] = update_time
+            _ashare_state["error"] = None if not errors else "; ".join(errors)
+
+        return jsonify({
+            "ok": True,
+            "market_state": market_state,
+            "ranked_sectors": sector_result.get("top_sectors", []),
+            "focus_sectors": sector_result.get("focus_in_top", []),
+            "recommendations": recs,
+            "screened_stocks": screened_stocks,
+            "data_quality": data_quality,
+            "last_updated": update_time,
+            "elapsed": all_data.get("elapsed", 0),
+        })
+
+    except Exception as e:
+        with _lock:
+            _ashare_state["error"] = str(e)
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/state")

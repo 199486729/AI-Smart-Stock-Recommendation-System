@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AlphaMind AI Trader V2</title>
+<title>AlphaMind AI 智能交易系统</title>
 <style>
 :root {
   --bg: #0d1117;
@@ -19,7 +19,7 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;
@@ -50,7 +50,6 @@ body {
   font-size: 14px;
   color: var(--dim);
   margin-bottom: 12px;
-  text-transform: uppercase;
   letter-spacing: 0.5px;
 }
 .price-big {
@@ -183,45 +182,45 @@ input:checked + .slider:before { transform: translateX(18px); }
 <body>
 
 <div class="header">
-  <h1>AlphaMind AI Trader V2</h1>
-  <div class="status" id="status">Loading...</div>
+  <h1>AlphaMind AI 智能交易系统</h1>
+  <div class="status" id="status">加载中...</div>
 </div>
 
 <div class="grid">
-  <!-- Market Data -->
+  <!-- 行情数据 -->
   <div class="card">
-    <h2>Market Data — XAUUSD (SGE Au99.99)</h2>
+    <h2>行情数据 — XAUUSD (上海金交所 Au99.99)</h2>
     <div class="price-big" id="price">--</div>
-    <div class="info-tag">CNY / gram</div>
+    <div class="info-tag">人民币 / 克</div>
     <div class="price-detail">
-      <div>O: <strong id="open">--</strong></div>
-      <div>H: <strong id="high">--</strong></div>
-      <div>L: <strong id="low">--</strong></div>
+      <div>开: <strong id="open">--</strong></div>
+      <div>高: <strong id="high">--</strong></div>
+      <div>低: <strong id="low">--</strong></div>
     </div>
     <div style="margin-top:8px;">
-      Trend: <span class="trend-badge" id="trend-badge">--</span>
+      趋势: <span class="trend-badge" id="trend-badge">--</span>
       <span style="font-size:13px;color:var(--dim);margin-left:8px;" id="trend-strength"></span>
     </div>
     <div class="info-tag" id="source-info"></div>
     <div class="error-box" id="error-box"></div>
   </div>
 
-  <!-- Signal -->
+  <!-- 交易信号 -->
   <div class="card">
-    <h2>Trading Signal</h2>
+    <h2>交易信号</h2>
     <div class="signal-box signal-hold" id="signal-box">
       <span class="signal-action" id="sig-action">--</span>
     </div>
     <div style="font-size:13px;color:var(--dim);" id="sig-reason"></div>
     <div style="margin-top:8px;font-size:13px;">
-      Confidence: <strong id="sig-conf">--</strong>
+      置信度: <strong id="sig-conf">--</strong>
     </div>
     <div class="confidence-bar">
       <div class="confidence-fill" id="conf-bar" style="width:0%"></div>
     </div>
     <div class="btn-row">
-      <button class="btn btn-primary" onclick="doRefresh()">Fetch & Analyze</button>
-      <button class="btn btn-primary" onclick="doExecute()" id="btn-exec" disabled>Execute Trade</button>
+      <button class="btn btn-primary" onclick="doRefresh()">获取数据并分析</button>
+      <button class="btn btn-primary" onclick="doExecute()" id="btn-exec" disabled>执行交易</button>
     </div>
     <div class="btn-row">
       <label class="toggle">
@@ -229,43 +228,43 @@ input:checked + .slider:before { transform: translateX(18px); }
           <input type="checkbox" id="auto-toggle" onchange="doAutoToggle()">
           <span class="slider"></span>
         </span>
-        Auto-trade (30s interval)
+        自动交易 (30秒间隔)
       </label>
     </div>
   </div>
 
-  <!-- Account Summary -->
+  <!-- 账户概况 -->
   <div class="card">
-    <h2>Account Summary</h2>
+    <h2>账户概况</h2>
     <div class="summary-stats">
       <div>
-        <div class="stat-label">Balance</div>
+        <div class="stat-label">余额</div>
         <div class="stat-value" id="balance">--</div>
       </div>
       <div>
-        <div class="stat-label">Equity</div>
+        <div class="stat-label">净值</div>
         <div class="stat-value" id="equity">--</div>
       </div>
       <div>
-        <div class="stat-label">Position Value</div>
+        <div class="stat-label">持仓价值</div>
         <div class="stat-value" id="pos-val">--</div>
       </div>
       <div>
-        <div class="stat-label">Total Trades</div>
+        <div class="stat-label">总交易数</div>
         <div class="stat-value" id="total-trades">--</div>
       </div>
     </div>
     <div style="margin-top:12px;font-size:13px;" id="position-detail"></div>
     <div class="btn-row">
-      <button class="btn btn-danger" onclick="doReset()">Reset Account</button>
+      <button class="btn btn-danger" onclick="doReset()">重置账户</button>
     </div>
   </div>
 
-  <!-- Trade Log -->
+  <!-- 交易记录 -->
   <div class="card">
-    <h2>Trade History</h2>
+    <h2>交易记录</h2>
     <div class="trade-log" id="trade-log">
-      <div style="color:var(--dim);font-size:13px;">No trades yet</div>
+      <div style="color:var(--dim);font-size:13px;">暂无交易</div>
     </div>
   </div>
 </div>
@@ -273,19 +272,26 @@ input:checked + .slider:before { transform: translateX(18px); }
 <script>
 const $ = id => document.getElementById(id);
 
+// 趋势中文映射
+const TREND_CN = { UP: '上涨', DOWN: '下跌', SIDEWAYS: '震荡' };
+// 信号中文映射
+const ACTION_CN = { BUY: '买入', SELL: '卖出', HOLD: '观望' };
+// 状态中文映射
+const STATUS_CN = { FILLED: '已成交', PENDING: '待执行', CANCELLED: '已取消', MANUAL: '手动' };
+
 async function loadState() {
   try {
     const r = await fetch('api/state');
     const s = await r.json();
     render(s);
-    $('status').textContent = 'Last update: ' + (s.last_updated || 'never');
+    $('status').textContent = '最近更新: ' + (s.last_updated || '从未');
   } catch (e) {
-    $('status').textContent = 'Connection error';
+    $('status').textContent = '连接错误';
   }
 }
 
 function render(s) {
-  // Market data
+  // 行情数据
   if (s.market_data) {
     const d = s.market_data;
     $('price').textContent = d.price.toLocaleString();
@@ -294,24 +300,25 @@ function render(s) {
     $('low').textContent = d.low?.toLocaleString() || '--';
 
     const badge = $('trend-badge');
-    badge.textContent = d.trend;
+    const trendLabel = TREND_CN[d.trend] || d.trend;
+    badge.textContent = trendLabel;
     badge.className = 'trend-badge';
     if (d.trend === 'UP') badge.classList.add('trend-up');
     else if (d.trend === 'DOWN') badge.classList.add('trend-down');
     else badge.classList.add('trend-side');
 
-    $('trend-strength').textContent = d.trend_strength ? `(strength: ${d.trend_strength})` : '';
-    $('source-info').textContent = `Source: ${d.source} | ${d.timestamp}`;
+    $('trend-strength').textContent = d.trend_strength ? `(强度: ${d.trend_strength})` : '';
+    $('source-info').textContent = `数据源: ${d.source} | ${d.timestamp}`;
   }
 
-  // Error
+  // 错误信息
   $('error-box').style.display = s.error ? 'block' : 'none';
-  if (s.error) $('error-box').textContent = 'Error: ' + s.error;
+  if (s.error) $('error-box').textContent = '错误: ' + s.error;
 
-  // Signal
+  // 交易信号
   if (s.trade_signal) {
     const sig = s.trade_signal;
-    $('sig-action').textContent = sig.action;
+    $('sig-action').textContent = ACTION_CN[sig.action] || sig.action;
     $('sig-reason').textContent = sig.reason || '';
     $('sig-conf').textContent = (sig.confidence * 100).toFixed(1) + '%';
 
@@ -331,17 +338,17 @@ function render(s) {
     $('btn-exec').disabled = sig.action === 'HOLD';
   }
 
-  // Last result
+  // 最近交易结果
   if (s.last_result) {
     const r = s.last_result;
     if (r.status === 'FILLED') {
       let extra = '';
-      if (r.pnl != null) extra = ` | PnL: ${r.pnl >= 0 ? '+' : ''}${r.pnl} (${r.pnl_pct}%)`;
-      $('status').textContent += ` | Last: ${r.status} ${r.action} @ ${r.price}${extra}`;
+      if (r.pnl != null) extra = ` | 盈亏: ${r.pnl >= 0 ? '+' : ''}${r.pnl} (${r.pnl_pct}%)`;
+      $('status').textContent += ` | 最近: ${STATUS_CN[r.status] || r.status} ${ACTION_CN[r.action] || r.action} @ ${r.price}${extra}`;
     }
   }
 
-  // Account
+  // 账户概况
   if (s.summary) {
     const a = s.summary;
     $('balance').textContent = a.balance.toLocaleString();
@@ -351,40 +358,40 @@ function render(s) {
 
     if (a.position) {
       $('position-detail').innerHTML = `
-        <span style="color:var(--green);">Holding:</span>
+        <span style="color:var(--green);">持仓:</span>
         ${a.position.symbol} x${a.position.quantity} @ ${a.position.avg_price}
-        (cost: ${a.position.cost_basis.toFixed(2)})
+        (成本: ${a.position.cost_basis.toFixed(2)})
       `;
     } else {
-      $('position-detail').textContent = 'No open position';
+      $('position-detail').textContent = '无持仓';
     }
   }
 
-  // Trade log
+  // 交易记录
   if (s.trade_log && s.trade_log.length > 0) {
     $('trade-log').innerHTML = s.trade_log.slice().reverse().map(t => `
       <div class="trade-row">
         <span>
           <span style="color:${t.action === 'BUY' ? 'var(--green)' : 'var(--red)'};font-weight:600;">
-            ${t.action}
+            ${ACTION_CN[t.action] || t.action}
           </span>
           ${t.quantity || ''} @ ${t.price}
         </span>
         <span>
-          ${t.pnl != null ? `<span class="${t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${t.pnl >= 0 ? '+' : ''}${t.pnl} (${t.pnl_pct}%)</span>` : `Bal: ${t.balance}`}
+          ${t.pnl != null ? `<span class="${t.pnl >= 0 ? 'pnl-pos' : 'pnl-neg'}">${t.pnl >= 0 ? '+' : ''}${t.pnl} (${t.pnl_pct}%)</span>` : `余额: ${t.balance}`}
         </span>
       </div>
     `).join('');
   } else {
-    $('trade-log').innerHTML = '<div style="color:var(--dim);font-size:13px;">No trades yet</div>';
+    $('trade-log').innerHTML = '<div style="color:var(--dim);font-size:13px;">暂无交易</div>';
   }
 
-  // Auto toggle
+  // 自动交易开关
   $('auto-toggle').checked = s.auto_trade;
 }
 
 async function doRefresh() {
-  $('status').textContent = 'Fetching...';
+  $('status').textContent = '获取数据中...';
   try {
     await fetch('api/refresh', { method: 'POST' });
   } catch (e) {}
@@ -392,11 +399,11 @@ async function doRefresh() {
 }
 
 async function doExecute() {
-  $('status').textContent = 'Executing...';
+  $('status').textContent = '执行交易中...';
   try {
     const r = await fetch('api/execute', { method: 'POST' });
     const j = await r.json();
-    if (!j.ok) $('status').textContent = 'Error: ' + j.error;
+    if (!j.ok) $('status').textContent = '错误: ' + j.error;
   } catch (e) {}
   await loadState();
 }
@@ -408,15 +415,15 @@ async function doAutoToggle() {
 }
 
 async function doReset() {
-  if (confirm('Reset account? This clears all positions and trade history.')) {
+  if (confirm('确定要重置账户吗？这将清除所有持仓和交易记录。')) {
     await fetch('api/reset', { method: 'POST' });
     loadState();
   }
 }
 
-// Init
+// 初始化
 loadState();
-// Auto-refresh dashboard every 10s
+// 每10秒自动刷新
 setInterval(loadState, 10000);
 </script>
 </body>
