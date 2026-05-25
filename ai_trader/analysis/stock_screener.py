@@ -106,13 +106,19 @@ def screen_stocks(
                         "source": "涨停池",
                     })
 
-    # 去重
+    # 去重 + 过滤非主板（排除创业板300/301、科创板688）
     seen_codes = set()
     unique_seeds = []
     for s in candidates_seeds:
-        if s["code"] not in seen_codes and not _is_excluded(s.get("name", "")):
-            seen_codes.add(s["code"])
-            unique_seeds.append(s)
+        code = str(s.get("code", ""))
+        if code in seen_codes:
+            continue
+        if not _is_main_board(code):
+            continue
+        if _is_excluded(s.get("name", "")):
+            continue
+        seen_codes.add(code)
+        unique_seeds.append(s)
 
     if not unique_seeds:
         logger.warning("无候选个股（龙头股和涨停池均无匹配）")
@@ -146,6 +152,11 @@ def screen_stocks(
     # 按质量分排名
     candidates.sort(key=lambda x: x.get("quality_score", 0), reverse=True)
     return candidates[:max_final]
+
+
+def _is_main_board(code: str) -> bool:
+    """主板过滤：排除创业板(300/301)和科创板(688)。"""
+    return not (code.startswith("300") or code.startswith("301") or code.startswith("688"))
 
 
 def _is_excluded(name: str) -> bool:

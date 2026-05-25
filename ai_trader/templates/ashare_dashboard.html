@@ -2,7 +2,7 @@
 <html lang="zh">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>A股智能推荐系统 — AlphaMind</title>
 <style>
 :root {
@@ -13,19 +13,26 @@
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
-.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
-.header h1 { font-size: 20px; font-weight: 600; }
-.header-right { display: flex; align-items: center; gap: 16px; }
-.btn-analyze { padding: 10px 24px; border: none; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; font-size: 15px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 8px; }
+.header { background: var(--card); border-bottom: 1px solid var(--border); padding: 12px 2vw; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 100; gap: 12px; }
+.header h1 { font-size: 20px; font-weight: 600; white-space: nowrap; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.btn-analyze { padding: 10px 24px; border: none; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; font-size: 15px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .btn-analyze:hover:not(:disabled) { background: var(--accent-hover); transform: translateY(-1px); }
 .btn-analyze:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ===== 聊天按钮 ===== */
+.btn-chat { width: 40px; height: 40px; border: 1px solid var(--border); border-radius: 8px; background: var(--card); color: var(--text); cursor: pointer; font-size: 18px; transition: all 0.2s; display: flex; align-items: center; justify-content: center; position: relative; }
+.btn-chat:hover { border-color: var(--accent); color: var(--accent); }
+.btn-chat.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
 .spinner { display: none; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
 .spinner.active { display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.status-bar { font-size: 13px; color: var(--dim); display: flex; gap: 12px; align-items: center; }
-.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.status-bar { font-size: 13px; color: var(--dim); display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 .dot-ok { background: var(--green); } .dot-warn { background: var(--yellow); } .dot-err { background: var(--red); }
-.container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+.container { width: 100%; margin: 0 auto; padding: 20px 2vw; transition: margin-left 0.3s; }
+.container.chat-open { margin-left: 550px; }
 .empty-state { text-align: center; padding: 80px 20px; color: var(--dim); }
 .empty-state h2 { font-size: 22px; margin-bottom: 12px; color: var(--text); }
 .empty-state p { font-size: 15px; line-height: 1.8; }
@@ -34,7 +41,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .loading-text { font-size: 16px; color: var(--dim); margin-top: 16px; }
 .error-banner { background: rgba(248,81,73,0.1); border: 1px solid var(--red); color: var(--red); padding: 12px 20px; border-radius: 8px; margin-bottom: 20px; display: none; font-size: 14px; }
 
-.market-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
+.market-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 2vw; margin-bottom: 24px; }
 .market-state-badge { display: inline-block; padding: 6px 20px; border-radius: 6px; font-size: 18px; font-weight: 700; margin-right: 12px; }
 .state-attack { background: rgba(248,81,73,0.15); color: var(--red); border: 1px solid rgba(248,81,73,0.3); }
 .state-range { background: rgba(210,153,29,0.15); color: var(--yellow); border: 1px solid rgba(210,153,29,0.3); }
@@ -42,8 +49,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .state-other { background: rgba(139,148,158,0.15); color: var(--dim); border: 1px solid rgba(139,148,158,0.3); }
 
 .market-header { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
-.market-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin: 12px 0; }
-.market-stat { background: rgba(22,27,34,0.5); border-radius: 8px; padding: 12px; text-align: center; }
+.market-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; }
+.market-stat { background: rgba(22,27,34,0.5); border-radius: 8px; padding: 12px 8px; text-align: center; }
 .market-stat .stat-val { font-size: 18px; font-weight: 700; }
 .market-stat .stat-label { font-size: 11px; color: var(--dim); margin-top: 2px; }
 .market-meta { display: flex; gap: 16px; margin-top: 8px; flex-wrap: wrap; font-size: 13px; }
@@ -62,11 +69,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .alert-info { background: rgba(31,111,235,0.08); border: 1px solid rgba(31,111,235,0.2); color: var(--blue); }
 
 .market-summary { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 15px; line-height: 1.7; }
-.market-indices { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; font-size: 13px; }
+.market-indices { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; font-size: 13px; }
 .market-index { color: var(--dim); }
 
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
-@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 
 .sector-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .sector-table th { text-align: left; padding: 8px 10px; color: var(--dim); font-weight: 500; border-bottom: 1px solid var(--border); font-size: 12px; }
@@ -82,12 +88,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .focus-tag { display: inline-block; background: rgba(88,166,255,0.15); color: var(--blue); padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
 .spike-tag { display: inline-block; background: rgba(248,81,73,0.12); color: var(--red); padding: 1px 5px; border-radius: 3px; font-size: 10px; margin-left: 4px; }
 
-.rec-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 20px; transition: border-color 0.2s; }
+.rec-card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 20px 2vw; margin-bottom: 20px; transition: border-color 0.2s; }
 .rec-card:hover { border-color: var(--accent); }
 .rec-card.buy-now { border-left: 3px solid var(--red); }
 .rec-card.wait { border-left: 3px solid var(--yellow); }
 .rec-card.avoid { border-left: 3px solid var(--green); opacity: 0.7; }
-.rec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.rec-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 12px; }
 .rec-title { font-size: 18px; font-weight: 700; }
 .rec-code { font-size: 13px; color: var(--dim); font-family: monospace; }
 .rec-type-tag { font-size: 11px; padding: 2px 8px; border-radius: 3px; margin-left: 8px; font-weight: 600; }
@@ -98,13 +104,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 .rec-meta-label { color: var(--dim); }
 .rec-meta-value { font-weight: 600; }
 
-.grade-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 700; }
+.grade-badge { display: inline-block; padding: 4px 12px; border-radius: 4px; font-size: 13px; font-weight: 700; white-space: nowrap; }
 .grade-buy { background: rgba(248,81,73,0.12); color: var(--red); }
 .grade-wait { background: rgba(210,153,29,0.12); color: var(--yellow); }
 .grade-avoid { background: rgba(63,185,80,0.12); color: var(--green); }
 
 .tranches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 14px 0; }
-@media (max-width: 600px) { .tranches { grid-template-columns: 1fr; } }
 .tranche-card { background: rgba(22,27,34,0.6); border: 1px solid var(--border); border-radius: 8px; padding: 12px; text-align: center; }
 .tranche-highlight { border-color: var(--red); background: rgba(248,81,73,0.06); }
 .tranche-num { font-size: 11px; color: var(--dim); margin-bottom: 2px; }
@@ -119,7 +124,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 
 .rec-footer { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.7; }
 .rec-reasoning { color: var(--dim); }
-.conf-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+.conf-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
 .conf-high { background: rgba(248,81,73,0.15); color: var(--red); }
 .conf-mid { background: rgba(210,153,29,0.15); color: var(--yellow); }
 .conf-low { background: rgba(63,185,80,0.15); color: var(--green); }
@@ -130,10 +135,132 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
 
 .card-title { font-size: 15px; color: var(--dim); margin-bottom: 16px; font-weight: 600; letter-spacing: 0.5px; }
 .no-recs { text-align: center; padding: 40px; color: var(--dim); font-size: 15px; line-height: 1.8; }
-.scroll-box { max-height: 600px; overflow-y: auto; }
+.scroll-box { max-height: 70vh; overflow-y: auto; }
 .scroll-box::-webkit-scrollbar { width: 4px; }
 .scroll-box::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 .updated-at { font-size: 12px; color: var(--dim); margin-top: 4px; }
+
+/* ========== AI 聊天面板 ========== */
+.chat-panel { position: fixed; top: 0; left: 0; height: 100vh; width: 550px; max-width: 100vw; background: var(--card); border-right: 1px solid var(--border); z-index: 200; display: flex; flex-direction: column; transform: translateX(-100%); transition: transform 0.3s ease; box-shadow: 4px 0 24px rgba(0,0,0,0.3); }
+.chat-panel.open { transform: translateX(0); }
+.chat-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; }
+.chat-overlay.open { display: block; }
+.chat-panel-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.chat-panel-header h3 { font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.chat-panel-header h3 .ai-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+.btn-chat-close { width: 32px; height: 32px; border: none; border-radius: 6px; background: transparent; color: var(--dim); cursor: pointer; font-size: 18px; transition: all 0.15s; display: flex; align-items: center; justify-content: center; }
+.btn-chat-close:hover { background: rgba(255,255,255,0.06); color: var(--text); }
+.chat-messages { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.chat-messages::-webkit-scrollbar { width: 4px; }
+.chat-messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.chat-empty { text-align: center; color: var(--dim); padding: 40px 20px; font-size: 14px; line-height: 1.8; }
+.chat-msg { max-width: 88%; padding: 10px 14px; border-radius: 12px; font-size: 14px; line-height: 1.65; word-wrap: break-word; }
+.chat-msg.user { align-self: flex-end; background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+.chat-msg.ai { align-self: flex-start; background: rgba(255,255,255,0.04); border: 1px solid var(--border); color: var(--text); border-bottom-left-radius: 4px; }
+.chat-msg .msg-time { font-size: 10px; opacity: 0.5; margin-top: 4px; display: block; }
+.chat-msg.ai .msg-time { text-align: left; }
+.chat-msg.user .msg-time { text-align: right; }
+.chat-input-wrap { padding: 12px 18px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 8px; }
+.chat-input { flex: 1; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font-size: 14px; resize: none; outline: none; font-family: inherit; max-height: 80px; }
+.chat-input:focus { border-color: var(--accent); }
+.chat-input::placeholder { color: var(--dim); }
+.btn-send { width: 40px; height: 40px; border: none; border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer; font-size: 16px; transition: all 0.15s; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+.btn-send:hover:not(:disabled) { background: var(--accent-hover); }
+.btn-send:disabled { opacity: 0.5; cursor: not-allowed; }
+.typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--dim); margin: 0 2px; animation: bounce 1.4s infinite both; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%, 80%, 100% { transform: translateY(0); } 40% { transform: translateY(-6px); } }
+
+/* ===== Markdown 渲染样式 ===== */
+.chat-msg.ai strong { color: #f0f6fc; font-weight: 700; }
+.chat-msg.ai code { background: rgba(139,148,158,0.15); padding: 1px 5px; border-radius: 3px; font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 13px; color: #f0c040; }
+.chat-msg.ai pre { background: rgba(13,17,23,0.6); border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; overflow-x: auto; margin: 8px 0; font-size: 13px; line-height: 1.5; }
+.chat-msg.ai pre code { background: none; padding: 0; color: var(--text); }
+.chat-msg.ai blockquote { border-left: 3px solid var(--accent); margin: 6px 0; padding: 4px 12px; color: var(--dim); background: rgba(31,111,235,0.06); border-radius: 0 4px 4px 0; }
+.chat-msg.ai ul, .chat-msg.ai ol { margin: 4px 0; padding-left: 20px; }
+.chat-msg.ai li { margin: 2px 0; }
+.chat-msg.ai table { border-collapse: collapse; width: 100%; margin: 8px 0; font-size: 13px; }
+.chat-msg.ai th { background: rgba(255,255,255,0.04); border-bottom: 1px solid var(--border); padding: 6px 10px; text-align: left; font-weight: 600; }
+.chat-msg.ai td { padding: 4px 10px; border-bottom: 1px solid rgba(48,54,61,0.5); }
+.chat-msg.ai .pos { color: var(--red); } .chat-msg.ai .neg { color: var(--green); }
+/* 已记录交易标记 */
+.chat-msg .trade-recorded { display: inline-block; font-size: 10px; background: rgba(63,185,80,0.12); color: var(--green); padding: 1px 6px; border-radius: 3px; margin-left: 6px; vertical-align: middle; }
+
+/* ========== 平板 ========== */
+@media (max-width: 1024px) {
+  .grid-2 { gap: 16px; }
+  .market-stats { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .tranches { gap: 6px; }
+  .tranche-card { padding: 8px; }
+  .tranche-price { font-size: 15px; }
+  .container.chat-open { margin-left: 450px; }
+  .chat-panel { width: 450px; }
+}
+
+/* ========== 手机端 ========== */
+@media (max-width: 768px) {
+  .header { padding: 10px 12px; flex-wrap: wrap; }
+  .header h1 { font-size: 16px; }
+  .header-right { width: 100%; justify-content: space-between; }
+  .btn-analyze { padding: 8px 16px; font-size: 13px; border-radius: 6px; }
+  .status-bar { font-size: 12px; }
+
+  .container { padding: 12px 10px; }
+  .container.chat-open { margin-left: 0; }
+  .market-card { padding: 14px 12px; border-radius: 10px; margin-bottom: 14px; }
+  .market-state-badge { font-size: 15px; padding: 4px 14px; }
+  .market-header { gap: 8px; font-size: 13px; }
+  .market-stats { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .market-stat { padding: 10px 4px; }
+  .market-stat .stat-val { font-size: 15px; }
+  .market-stat .stat-label { font-size: 10px; }
+  .market-meta { gap: 10px; font-size: 11px; }
+  .market-summary { font-size: 13px; }
+  .market-indices { font-size: 11px; gap: 8px; }
+
+  .grid-2 { grid-template-columns: 1fr; gap: 14px; }
+
+  .rec-card { padding: 14px 12px; border-radius: 10px; margin-bottom: 12px; }
+  .rec-header { flex-direction: column; align-items: flex-start; gap: 6px; }
+  .rec-title { font-size: 16px; }
+  .rec-meta { font-size: 12px; gap: 8px; }
+  .rec-footer { font-size: 13px; }
+
+  .tranches { grid-template-columns: 1fr; gap: 6px; }
+  .tranche-card { padding: 10px; }
+
+  .entry-info { flex-direction: column; gap: 6px; font-size: 12px; }
+
+  .sector-table { font-size: 12px; }
+  .sector-table th, .sector-table td { padding: 6px 6px; }
+  .sector-name { max-width: 70px; }
+
+  .grade-badge { font-size: 12px; padding: 3px 8px; }
+  .conf-badge { font-size: 11px; padding: 2px 8px; }
+  .rec-reasoning { font-size: 13px; }
+
+  .quality-bar { gap: 8px; font-size: 11px; }
+  .card-title { font-size: 13px; margin-bottom: 10px; }
+
+  .scroll-box { max-height: 50vh; }
+  .empty-state { padding: 40px 12px; }
+  .empty-state h2 { font-size: 18px; }
+  .empty-state p { font-size: 13px; }
+
+  /* 手机端聊天全屏 */
+  .chat-panel { width: 100vw; }
+  .chat-panel.open { transform: translateX(0); }
+}
+
+/* ========== 小屏手机 ========== */
+@media (max-width: 400px) {
+  .market-stats { grid-template-columns: 1fr 1fr; }
+  .header h1 { font-size: 14px; }
+  .btn-analyze { font-size: 12px; padding: 8px 12px; }
+  .btn-analyze span:not(.spinner) { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+}
 </style>
 </head>
 <body>
@@ -145,6 +272,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
       <span class="status-dot dot-err" id="status-dot"></span>
       <span id="status-text">等待分析</span>
     </div>
+    <button class="btn-chat" id="btn-chat" onclick="toggleChat()" title="AI行情助手">💬</button>
     <button class="btn-analyze" id="btn-analyze" onclick="doAnalyze()">
       <span class="spinner" id="spinner"></span>
       <span id="btn-text">一键获取市场分析</span>
@@ -156,7 +284,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   <div class="empty-state" id="empty-state">
     <h2>点击上方按钮开始分析</h2>
     <p>系统将自动拉取：大盘指数、市场广度、北向资金、全板块排名、个股行情<br>
-    然后生成：方向判断 + 追涨风险 + 板块排名 + 精选个股/ETF推荐</p>
+    然后生成：方向判断 + 追涨风险 + 板块排名 + 精选个股/ETF推荐<br><br>
+    <small style="color:var(--dim)">点击 💬 可打开 AI 助手，实时讨论行情与操作</small></p>
   </div>
   <div class="loading-state" id="loading-state">
     <div class="spinner" style="display:inline-block;width:32px;height:32px;"></div>
@@ -167,7 +296,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
     <div class="market-card" id="market-card"></div>
     <div class="quality-bar" id="quality-bar"></div>
     <div class="grid-2">
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 2vw;">
         <div class="card-title">板块强度排名 TOP 30</div>
         <div class="scroll-box" id="sector-table"></div>
       </div>
@@ -180,8 +309,37 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft Ya
   </div>
 </div>
 
+<!-- ========== AI 聊天面板 ========== -->
+<div class="chat-overlay" id="chat-overlay" onclick="toggleChat()"></div>
+<div class="chat-panel" id="chat-panel">
+  <div class="chat-panel-header">
+    <h3><span class="ai-dot"></span> AI 行情助手</h3>
+    <button class="btn-chat-close" onclick="toggleChat()">✕</button>
+  </div>
+  <div class="chat-messages" id="chat-messages">
+    <div class="chat-empty" id="chat-empty">
+      我是你的A股AI交易助手<br><br>
+      可以先点「一键获取市场分析」获取最新数据<br>
+      然后问我：<br><br>
+      - 今天市场怎么样？<br>
+      - 我买了XX，现在该怎么操作？<br>
+      - 这个板块还能追吗？<br>
+      - 帮我制定一个止损计划<br><br>
+      <small>我会基于实时行情数据来回答</small>
+    </div>
+  </div>
+  <div class="chat-input-wrap">
+    <textarea class="chat-input" id="chat-input" rows="1" placeholder="输入你的问题..." onkeydown="handleChatKey(event)"></textarea>
+    <button class="btn-send" id="btn-send" onclick="sendMessage()">➤</button>
+  </div>
+</div>
+
 <script>
 const $ = id => document.getElementById(id);
+
+// ===================================================================
+// 主分析
+// ===================================================================
 
 async function doAnalyze() {
   const btn = $('btn-analyze'), spinner = $('spinner'), btnText = $('btn-text');
@@ -223,22 +381,18 @@ function renderMarketState(ms) {
     '修复反弹（弱）': 'state-defense', '修复反弹（待确认）': 'state-range'
   }[ms.composite] || 'state-other';
 
-  // 多空信号
   const bulls = (ms.bull_signals || []).map(s => `<span class="signal-bull">${s}</span>`).join('<br>');
   const bears = (ms.bear_signals || []).map(s => `<span class="signal-bear">${s}</span>`).join('<br>');
 
-  // 追涨风险
   const chase = ms.chase_risk || {};
   const chaseCls = chase.level === '高' ? 'alert-danger' : (chase.level === '中' ? 'alert-warning' : 'alert-info');
 
-  // 修复检测
   const recovery = ms.recovery || {};
   let recoveryHtml = '';
   if (recovery.detected) {
     recoveryHtml = `<div class="alert-warning alert-box" style="margin-top:8px;">⚠ ${recovery.label}</div>`;
   }
 
-  // 指数
   let idxHtml = '';
   if (ms.indices_snapshot && ms.indices_snapshot.length) {
     idxHtml = ms.indices_snapshot.map(i =>
@@ -258,7 +412,6 @@ function renderMarketState(ms) {
       <span style="font-size:15px;">置信度: <strong style="color:${dirConv}">${ms.conviction}</strong></span>
       <span style="font-size:15px;">${ms.suitable ? '✅ 适合交易' : '⚠ 建议观望'}</span>
     </div>
-
     <div class="market-stats">
       <div class="market-stat">
         <div class="stat-val" style="color:${dirColor}">${ms.direction_score || 0}</div>
@@ -286,14 +439,11 @@ function renderMarketState(ms) {
         <div class="stat-label">现价 / 支撑</div>
       </div>` : ''}
     </div>
-
     <div class="signal-list">${bulls} ${bears}</div>
     ${recoveryHtml}
-
     <div class="${chaseCls} alert-box" style="margin-top:8px;">
       ${chase.label || ''} ${(chase.reasons || []).join('；')}
     </div>
-
     <div class="market-indices">${idxHtml}</div>
     <div class="market-meta">
       ${breadthRaw['上涨'] != null ? `<span class="market-meta-item"><span class="label">涨跌比</span> <span class="value">${breadthRaw['上涨']}/${breadthRaw['下跌']}</span></span>` : ''}
@@ -360,16 +510,23 @@ function renderSectors(sectors) {
 
 function renderRecommendations(recs) {
   if (!recs.length) {
-    $('recs-container').innerHTML = '<div class="no-recs"><p>当前暂无符合条件的买入推荐</p><p style="font-size:13px;">可能原因：市场追涨风险高、无板块处于健康回踩、或所有候选标的均不满足机构买入标准</p></div>';
+    $('recs-container').innerHTML = '<div class="no-recs"><p>当前暂无符合条件的买入推荐</p><p style="font-size:13px;">可能原因：市场追涨风险高、无板块处于健康回踩、或所有候选标的均不满足机构买入标准（低于2★）</p></div>';
     return;
   }
   let html = '';
   recs.forEach(r => {
+    const stars = r.stars || 0;
+    const starsLabel = r.stars_label || '★'.repeat(stars) + '☆'.repeat(5-stars);
+    const allocPct = r.alloc_pct || r.position_plan?.total_allocation_pct || 10;
+
+    // 星级颜色
+    const starColor = stars >= 5 ? 'var(--red)' : (stars >= 4 ? '#ff8c00' : (stars >= 3 ? 'var(--yellow)' : 'var(--dim)'));
+    const starBorder = stars >= 5 ? '5★-gold' : (stars >= 4 ? '4★' : '');
+
     const grade = r.entry_plan?.entry_grade || 'WAIT_PULLBACK';
     const cardCls = grade === 'BUY_NOW' ? 'buy-now' : (grade === 'WAIT_PULLBACK' ? 'wait' : 'avoid');
     const gradeCls = grade === 'BUY_NOW' ? 'grade-buy' : (grade === 'WAIT_PULLBACK' ? 'grade-wait' : 'grade-avoid');
     const gradeLabel = grade === 'BUY_NOW' ? '市价可入' : (grade === 'WAIT_PULLBACK' ? '等回调' : '不建议追高');
-    const confCls = r.confidence === '高' ? 'conf-high' : (r.confidence === '低' ? 'conf-low' : 'conf-mid');
     const typeTag = r.type === 'STOCK' ? '<span class="rec-type-tag tag-stock">个股</span>' : '<span class="rec-type-tag tag-etf">ETF</span>';
     const tech = r.technical || {};
     const entry = r.entry_plan || {};
@@ -377,7 +534,6 @@ function renderRecommendations(recs) {
     const pctCls = (r.change_pct || 0) >= 0 ? 'positive' : 'negative';
     const pctSign = (r.change_pct || 0) >= 0 ? '+' : '';
 
-    // 分批
     const tranches = (entry.tranches || []).map((t, i) => {
       const hl = i === 0 ? ' tranche-highlight' : '';
       return `<div class="tranche-card${hl}">
@@ -388,7 +544,6 @@ function renderRecommendations(recs) {
       </div>`;
     }).join('');
 
-    // 入场信息
     let entryExtra = '';
     if (grade === 'WAIT_PULLBACK' && entry.target_price) {
       entryExtra = `<div class="entry-info-item"><span class="entry-info-label">建议挂单价:</span> <span class="entry-info-value" style="color:var(--yellow)">${entry.target_price}</span></div>`;
@@ -400,9 +555,9 @@ function renderRecommendations(recs) {
           <span class="rec-title">${r.name}${typeTag}</span>
           <span class="rec-code">${r.code}</span>
         </div>
-        <div style="display:flex;align-items:center;gap:10px;">
-          <span class="grade-badge ${gradeCls}">${gradeLabel}</span>
-          <span class="conf-badge ${confCls}">${r.confidence}置信度</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:22px;color:${starColor};letter-spacing:2px;line-height:1;" title="${stars}星推荐">${starsLabel}</span>
+          <span class="conf-badge" style="background:${starColor}22;color:${starColor};border:1px solid ${starColor}44">${allocPct}%仓位</span>
         </div>
       </div>
       <div class="rec-meta">
@@ -413,20 +568,17 @@ function renderRecommendations(recs) {
         <div class="rec-meta-item"><span class="rec-meta-label">趋势:</span><span class="rec-meta-value">${tech.trend || '—'}</span></div>
         ${tech.dist_to_high_pct != null ? `<div class="rec-meta-item"><span class="rec-meta-label">距高点:</span><span class="rec-meta-value" style="color:var(--red)">${tech.dist_to_high_pct}%</span></div>` : ''}
       </div>
-
       ${tech.ma20 ? `<div style="font-size:12px;color:var(--dim);margin-bottom:8px;">
         MA5: ${tech.ma5||'—'} | MA20: ${tech.ma20} | MA60: ${tech.ma60||'—'} | 20日高: ${tech.high_20d||'—'}
       </div>` : ''}
-
       <div class="entry-info">
+        <div class="entry-info-item"><span class="entry-info-label">入场:</span> <span class="grade-badge ${gradeCls}" style="display:inline-block;margin:0;">${gradeLabel}</span></div>
         <div class="entry-info-item"><span class="entry-info-label">止损:</span> <span class="stop-loss">${entry.stop_loss}</span> (-${entry.stop_loss_pct}%)</div>
         <div class="entry-info-item"><span class="entry-info-label">最大亏损:</span> <span class="stop-loss">¥${(entry.max_loss_amount||0).toLocaleString()}</span></div>
-        <div class="entry-info-item"><span class="entry-info-label">仓位:</span> <span class="entry-info-value">${pos.total_allocation_pct}% (¥${(pos.total_amount||0).toLocaleString()})</span></div>
+        <div class="entry-info-item"><span class="entry-info-label">仓位:</span> <span class="entry-info-value">${allocPct}% (¥${(pos.total_amount||0).toLocaleString()})</span></div>
         ${entryExtra}
       </div>
-
       ${entry.tranches && entry.tranches.length > 0 ? `<div class="tranches">${tranches}</div>` : ''}
-
       <div class="rec-footer">
         <div class="rec-reasoning">${r.reasoning}</div>
       </div>
@@ -443,6 +595,199 @@ function updateStatus(type, text) {
   $('status-dot').className = 'status-dot ' + (type === 'ok' ? 'dot-ok' : type === 'warn' ? 'dot-warn' : 'dot-err');
   $('status-text').textContent = text;
 }
+
+// ===================================================================
+// AI 聊天 (SSE 流式)
+// ===================================================================
+
+let _chatOpen = false;
+let _chatHistory = [];
+const MAX_HISTORY = 20;
+
+function toggleChat() {
+  _chatOpen = !_chatOpen;
+  $('chat-panel').classList.toggle('open', _chatOpen);
+  $('chat-overlay').classList.toggle('open', _chatOpen);
+  $('btn-chat').classList.toggle('active', _chatOpen);
+  if (window.innerWidth > 768) {
+    $('main-container').classList.toggle('chat-open', _chatOpen);
+  }
+  if (_chatOpen) {
+    setTimeout(() => $('chat-input').focus(), 350);
+  }
+}
+
+function handleChatKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+async function sendMessage() {
+  const input = $('chat-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+
+  input.value = '';
+  input.style.height = 'auto';
+  $('btn-send').disabled = true;
+
+  const empty = $('chat-empty');
+  if (empty) empty.style.display = 'none';
+
+  // 添加用户消息
+  addChatBubble('user', msg);
+
+  // 创建流式 AI 气泡
+  const streamId = 'stream-' + Date.now();
+  const time = new Date().toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' });
+  const div = document.createElement('div');
+  div.className = 'chat-msg ai';
+  div.id = streamId;
+  div.innerHTML = '<span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>';
+  $('chat-messages').appendChild(div);
+  $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+
+  let fullText = '';
+  let firstDelta = true;
+
+  try {
+    const resp = await fetch('/api/ashare/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: msg, history: _chatHistory }),
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const data = JSON.parse(line.slice(6));
+          if (data.type === 'delta') {
+            if (firstDelta) {
+              div.innerHTML = '';
+              firstDelta = false;
+            }
+            fullText += data.text;
+            div.innerHTML = fullText.replace(/\n/g, '<br>');
+          } else if (data.type === 'status') {
+            if (firstDelta) {
+              div.innerHTML = '';
+              firstDelta = false;
+            }
+            fullText += data.text;
+            div.innerHTML = fullText.replace(/\n/g, '<br>');
+          } else if (data.type === 'done') {
+            // OK
+          } else if (data.type === 'error') {
+            if (firstDelta) div.innerHTML = '';
+            div.innerHTML = '抱歉，' + (data.text || '未知错误');
+            fullText = '';
+          }
+        } catch (_) {}
+      }
+      $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+    }
+  } catch (e) {
+    div.innerHTML = '网络错误：' + e.message;
+    fullText = '';
+  }
+
+  // 添加时间戳
+  if (fullText) {
+    div.innerHTML = renderMarkdown(fullText) + `<span class="msg-time">${time}</span>`;
+    _chatHistory.push({ role: 'assistant', content: fullText });
+    if (_chatHistory.length > MAX_HISTORY) _chatHistory = _chatHistory.slice(-MAX_HISTORY);
+  } else if (div.innerHTML.trim() === '') {
+    div.innerHTML = '（无响应）<span class="msg-time">' + time + '</span>';
+  }
+
+  $('btn-send').disabled = false;
+  input.focus();
+}
+
+function renderMarkdown(text) {
+  var html = text;
+
+  // 代码块 ```...```
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+
+  // 行内代码 `...`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  // 粗体 **...**
+  html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+
+  // 引用 > ...
+  html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>');
+
+  // 无序列表 - item / * item
+  html = html.replace(/(?:^|\n)[-*] (.+?)(?=\n|$)/g, function(m) {
+    return '\n<li>' + m.replace(/^[-*] /, '') + '</li>';
+  });
+
+  // 有序列表 1. item
+  html = html.replace(/(?:^|\n)(\d+)\. (.+?)(?=\n|$)/g, function(m) {
+    return '\n<li>' + m.replace(/^\d+\. /, '') + '</li>';
+  });
+
+  // 包装连续 <li> 为 <ul>
+  html = html.replace(/((?:<li>.*?<\/li>\n?)+)/g, '<ul>$1</ul>');
+  html = html.replace(/<ul>\s*<\/ul>/g, '');
+  html = html.replace(/<ul>\n/g, '<ul>');
+
+  // 链接 [text](url)
+  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener" style="color:var(--blue);text-decoration:none;">$1</a>');
+
+  // 表格 | col | col |
+  html = html.replace(/\|(.+)\|\n\|[-| :]+\|\n((?:\|.+\|\n?)*)/g, function(m, header, rows) {
+    var hcols = header.split('|').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+    var th = '<tr>' + hcols.map(function(c) { return '<th>' + c + '</th>'; }).join('') + '</tr>';
+    var trs = rows.trim().split('\n').map(function(row) {
+      var cols = row.split('|').map(function(c) { return c.trim(); }).filter(function(c) { return c; });
+      return '<tr>' + cols.map(function(c) {
+        var cls = parseFloat(c) < 0 ? 'neg' : '';
+        return '<td class="' + cls + '">' + c + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    return '<table>' + th + trs + '</table>';
+  });
+
+  return html;
+}
+
+function addChatBubble(role, content) {
+  const isUser = role === 'user';
+  const time = new Date().toLocaleTimeString('zh', { hour: '2-digit', minute: '2-digit' });
+
+  _chatHistory.push({ role: role === 'user' ? 'user' : 'assistant', content });
+  if (_chatHistory.length > MAX_HISTORY) _chatHistory = _chatHistory.slice(-MAX_HISTORY);
+
+  const div = document.createElement('div');
+  div.className = `chat-msg ${isUser ? 'user' : 'ai'}`;
+  const body = isUser ? content.replace(/\n/g, '<br>') : renderMarkdown(content);
+  div.innerHTML = `${body}<span class="msg-time">${time}</span>`;
+  $('chat-messages').appendChild(div);
+  $('chat-messages').scrollTop = $('chat-messages').scrollHeight;
+}
+
+$('chat-input').addEventListener('input', function() {
+  this.style.height = 'auto';
+  this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+});
 </script>
 </body>
 </html>

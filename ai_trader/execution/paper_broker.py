@@ -10,12 +10,16 @@ from ai_trader.config import config
 
 
 class PaperBroker:
-    """Simulated broker with config-driven fees and position tracking."""
+    """Simulated broker with config-driven fees and position tracking.
 
-    def __init__(self, initial_balance: Optional[float] = None):
+    Set journal=True to persist trades to paper_trades SQLite table.
+    """
+
+    def __init__(self, initial_balance: Optional[float] = None, journal: bool = False):
         self.balance = initial_balance or config.trading.initial_balance
         self.position: Optional[Dict] = None  # {symbol, quantity, avg_price}
         self.trade_log: list = []
+        self._journal = journal
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,6 +81,7 @@ class PaperBroker:
         }
         self.trade_log.append(confirm)
         self._print_trade(confirm)
+        self._maybe_journal(confirm)
         return confirm
 
     def _close_long(self, price: float, signal: Dict) -> Dict:
@@ -96,6 +101,7 @@ class PaperBroker:
         confirm = {
             "status": "FILLED",
             "action": "SELL",
+            "symbol": pos["symbol"],
             "quantity": qty,
             "price": price,
             "entry_price": pos["avg_price"],
@@ -110,11 +116,35 @@ class PaperBroker:
         self.position = None
         self.trade_log.append(confirm)
         self._print_trade(confirm)
+        self._maybe_journal(confirm)
         return confirm
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _maybe_journal(self, confirm: Dict):
+        """Persist to paper_trades if journal mode is enabled."""
+        if not self._journal:
+            return
+        try:
+            from ai_trader.trade_journal import record_trade
+            side = "buy" if confirm["action"] == "BUY" else "sell"
+            symbol = confirm.get("symbol", "")
+            qty = confirm["quantity"]
+            price = confirm["price"]
+            record_trade(
+                code=symbol,
+                name=symbol,
+                side=side,
+                price=price,
+                quantity=qty,
+                amount=confirm.get("cost", qty * price) if side == "buy" else qty * price,
+                notes=confirm.get("reason", ""),
+                table="paper",
+            )
+        except Exception:
+            pass  # journal failure must not break execution
 
     def _calc_position_size(self, price: float) -> int:
         """Calculate position size respecting max_position_ratio."""

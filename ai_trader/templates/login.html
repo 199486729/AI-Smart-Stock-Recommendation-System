@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>登录 — AlphaMind AI Trader</title>
+<style>
+:root {
+  --bg: #0d1117; --card: #161b22; --border: #30363d;
+  --text: #c9d1d9; --dim: #8b949e;
+  --green: #3fb950; --red: #f85149; --yellow: #d2991d;
+  --blue: #58a6ff; --accent: #1f6feb; --accent-hover: #388bfd;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  background: var(--bg); color: var(--text);
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+}
+.login-box {
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  padding: 40px; width: 380px; max-width: 95vw;
+}
+.login-box h1 { font-size: 22px; text-align: center; margin-bottom: 6px; }
+.login-box .subtitle { text-align: center; font-size: 13px; color: var(--dim); margin-bottom: 28px; }
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; font-size: 13px; color: var(--dim); margin-bottom: 4px; }
+.form-group input {
+  width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); font-size: 14px; outline: none;
+  font-family: inherit; transition: border-color 0.2s;
+}
+.form-group input:focus { border-color: var(--accent); }
+.btn-submit {
+  width: 100%; padding: 12px; border: none; border-radius: 8px;
+  background: var(--accent); color: #fff; font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: all 0.2s; margin-top: 8px;
+}
+.btn-submit:hover { background: var(--accent-hover); }
+.btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+.error-msg { background: rgba(248,81,73,0.1); border: 1px solid var(--red); color: var(--red);
+  padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.switch-link { text-align: center; margin-top: 18px; font-size: 13px; color: var(--dim); }
+.switch-link a { color: var(--blue); cursor: pointer; text-decoration: none; }
+.switch-link a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="login-box">
+  <h1>AlphaMind AI Trader</h1>
+  <p class="subtitle" id="form-title">登录你的账户</p>
+  <div class="error-msg" id="error-msg"></div>
+
+  <!-- 登录表单 -->
+  <form id="login-form" onsubmit="handleLogin(event)">
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="login-email" placeholder="your@email.com" required autofocus>
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="login-password" placeholder="至少6位" required>
+    </div>
+    <button type="submit" class="btn-submit" id="login-btn">登 录</button>
+  </form>
+
+  <!-- 注册表单 -->
+  <form id="register-form" onsubmit="handleRegister(event)" style="display:none;">
+    <div class="form-group">
+      <label>邮箱</label>
+      <input type="email" id="reg-email" placeholder="your@email.com" required>
+    </div>
+    <div class="form-group">
+      <label>昵称 <small style="color:var(--dim)">（可选）</small></label>
+      <input type="text" id="reg-nickname" placeholder="怎么称呼你">
+    </div>
+    <div class="form-group">
+      <label>密码</label>
+      <input type="password" id="reg-password" placeholder="至少6位" required>
+    </div>
+    <button type="submit" class="btn-submit" id="reg-btn">注 册</button>
+  </form>
+
+  <p class="switch-link" id="switch-link">
+    还没有账户？<a onclick="toggleForm()">立即注册</a>
+  </p>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let _mode = 'login';
+
+function toggleForm() {
+  _mode = _mode === 'login' ? 'register' : 'login';
+  $('login-form').style.display = _mode === 'login' ? 'block' : 'none';
+  $('register-form').style.display = _mode === 'register' ? 'block' : 'none';
+  $('form-title').textContent = _mode === 'login' ? '登录你的账户' : '创建新账户';
+  $('switch-link').innerHTML = _mode === 'login'
+    ? '还没有账户？<a onclick="toggleForm()">立即注册</a>'
+    : '已有账户？<a onclick="toggleForm()">去登录</a>';
+  $('error-msg').style.display = 'none';
+}
+
+function showError(msg) {
+  $('error-msg').textContent = msg;
+  $('error-msg').style.display = 'block';
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const btn = $('login-btn');
+  btn.disabled = true; btn.textContent = '登录中...';
+  $('error-msg').style.display = 'none';
+
+  try {
+    const r = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: $('login-email').value.trim(),
+        password: $('login-password').value,
+      }),
+    });
+    const data = await r.json();
+    if (!data.ok) { showError(data.error || '登录失败'); return; }
+    // 跳转到仪表盘
+    const redirect = new URLSearchParams(location.search).get('next') || '/ashare';
+    location.href = redirect;
+  } catch (e) {
+    showError('网络错误: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '登 录';
+  }
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const btn = $('reg-btn');
+  btn.disabled = true; btn.textContent = '注册中...';
+  $('error-msg').style.display = 'none';
+
+  try {
+    const r = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: $('reg-email').value.trim(),
+        password: $('reg-password').value,
+        nickname: $('reg-nickname').value.trim(),
+      }),
+    });
+    const data = await r.json();
+    if (!data.ok) { showError(data.error || '注册失败'); return; }
+    const redirect = new URLSearchParams(location.search).get('next') || '/ashare';
+    location.href = redirect;
+  } catch (e) {
+    showError('网络错误: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '注 册';
+  }
+}
+</script>
+</body>
+</html>
