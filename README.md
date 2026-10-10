@@ -1,4 +1,4 @@
-# AlphaMind AI Trader V2
+# AI-Smart-Stock-Recommendation-System
 
 面向 A 股市场的智能分析与推荐系统，提供市场状态判断、板块强弱排名、股票与 ETF 筛选、AI 对话、交易记录和推荐历史等功能。
 
