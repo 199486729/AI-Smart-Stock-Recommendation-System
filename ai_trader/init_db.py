@@ -152,6 +152,11 @@ def init_db(drop_first: bool = False):
             if "password_hash" not in user_columns:
                 cur.execute("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255) DEFAULT NULL")
 
+            # 邀请码旧表的字段长度更短；保留旧用户的 NULL 登录字段并扩展容量。
+            cur.execute("ALTER TABLE users MODIFY COLUMN email VARCHAR(255) DEFAULT NULL")
+            cur.execute("ALTER TABLE users MODIFY COLUMN password_hash VARCHAR(255) DEFAULT NULL")
+            cur.execute("ALTER TABLE users MODIFY COLUMN nickname VARCHAR(100) DEFAULT ''")
+
             cur.execute("SHOW INDEX FROM users WHERE Key_name='email'")
             if not cur.fetchone():
                 cur.execute("ALTER TABLE users ADD UNIQUE INDEX email (email)")
