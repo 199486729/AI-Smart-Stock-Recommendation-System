@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
@@ -7,8 +7,7 @@
 <style>
 :root {
   --bg: #0d1117; --card: #161b22; --border: #30363d;
-  --text: #c9d1d9; --dim: #8b949e;
-  --green: #3fb950; --red: #f85149; --yellow: #d2991d;
+  --text: #c9d1d9; --dim: #8b949e; --red: #f85149;
   --blue: #58a6ff; --accent: #1f6feb; --accent-hover: #388bfd;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -38,8 +37,10 @@ body {
 }
 .btn-submit:hover { background: var(--accent-hover); }
 .btn-submit:disabled { opacity: 0.6; cursor: not-allowed; }
-.error-msg { background: rgba(248,81,73,0.1); border: 1px solid var(--red); color: var(--red);
-  padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none; }
+.error-msg {
+  background: rgba(248,81,73,0.1); border: 1px solid var(--red); color: var(--red);
+  padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 16px; display: none;
+}
 .switch-link { text-align: center; margin-top: 18px; font-size: 13px; color: var(--dim); }
 .switch-link a { color: var(--blue); cursor: pointer; text-decoration: none; }
 .switch-link a:hover { text-decoration: underline; }
@@ -51,32 +52,30 @@ body {
   <p class="subtitle" id="form-title">登录你的账户</p>
   <div class="error-msg" id="error-msg"></div>
 
-  <!-- 登录表单 -->
   <form id="login-form" onsubmit="handleLogin(event)">
     <div class="form-group">
-      <label>邮箱</label>
-      <input type="email" id="login-email" placeholder="your@email.com" required autofocus>
+      <label for="login-email">邮箱</label>
+      <input type="email" id="login-email" placeholder="your@email.com" autocomplete="email" required autofocus>
     </div>
     <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="login-password" placeholder="至少6位" required>
+      <label for="login-password">密码</label>
+      <input type="password" id="login-password" placeholder="至少6位" autocomplete="current-password" required>
     </div>
     <button type="submit" class="btn-submit" id="login-btn">登 录</button>
   </form>
 
-  <!-- 注册表单 -->
   <form id="register-form" onsubmit="handleRegister(event)" style="display:none;">
     <div class="form-group">
-      <label>邮箱</label>
-      <input type="email" id="reg-email" placeholder="your@email.com" required>
+      <label for="reg-email">邮箱</label>
+      <input type="email" id="reg-email" placeholder="your@email.com" autocomplete="email" required>
     </div>
     <div class="form-group">
-      <label>昵称 <small style="color:var(--dim)">（可选）</small></label>
-      <input type="text" id="reg-nickname" placeholder="怎么称呼你">
+      <label for="reg-nickname">昵称 <small>（可选）</small></label>
+      <input type="text" id="reg-nickname" placeholder="怎么称呼你" maxlength="100" autocomplete="nickname">
     </div>
     <div class="form-group">
-      <label>密码</label>
-      <input type="password" id="reg-password" placeholder="至少6位" required>
+      <label for="reg-password">密码</label>
+      <input type="password" id="reg-password" placeholder="至少6位" minlength="6" autocomplete="new-password" required>
     </div>
     <button type="submit" class="btn-submit" id="reg-btn">注 册</button>
   </form>
@@ -88,32 +87,38 @@ body {
 
 <script>
 const $ = id => document.getElementById(id);
-let _mode = 'login';
+let mode = 'login';
 
 function toggleForm() {
-  _mode = _mode === 'login' ? 'register' : 'login';
-  $('login-form').style.display = _mode === 'login' ? 'block' : 'none';
-  $('register-form').style.display = _mode === 'register' ? 'block' : 'none';
-  $('form-title').textContent = _mode === 'login' ? '登录你的账户' : '创建新账户';
-  $('switch-link').innerHTML = _mode === 'login'
+  mode = mode === 'login' ? 'register' : 'login';
+  $('login-form').style.display = mode === 'login' ? 'block' : 'none';
+  $('register-form').style.display = mode === 'register' ? 'block' : 'none';
+  $('form-title').textContent = mode === 'login' ? '登录你的账户' : '创建新账户';
+  $('switch-link').innerHTML = mode === 'login'
     ? '还没有账户？<a onclick="toggleForm()">立即注册</a>'
     : '已有账户？<a onclick="toggleForm()">去登录</a>';
   $('error-msg').style.display = 'none';
 }
 
-function showError(msg) {
-  $('error-msg').textContent = msg;
+function showError(message) {
+  $('error-msg').textContent = message;
   $('error-msg').style.display = 'block';
 }
 
-async function handleLogin(e) {
-  e.preventDefault();
-  const btn = $('login-btn');
-  btn.disabled = true; btn.textContent = '登录中...';
+function enterDashboard() {
+  // auto=1 只在本次登录跳转时触发一次自动市场分析。
+  location.href = '/ashare?auto=1';
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const button = $('login-btn');
+  button.disabled = true;
+  button.textContent = '登录中...';
   $('error-msg').style.display = 'none';
 
   try {
-    const r = await fetch('/api/auth/login', {
+    const response = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -121,26 +126,29 @@ async function handleLogin(e) {
         password: $('login-password').value,
       }),
     });
-    const data = await r.json();
-    if (!data.ok) { showError(data.error || '登录失败'); return; }
-    // 跳转到仪表盘
-    const redirect = new URLSearchParams(location.search).get('next') || '/ashare';
-    location.href = redirect;
-  } catch (e) {
-    showError('网络错误: ' + e.message);
+    const data = await response.json();
+    if (!data.ok) {
+      showError(data.error || '登录失败');
+      return;
+    }
+    enterDashboard();
+  } catch (error) {
+    showError('网络错误: ' + error.message);
   } finally {
-    btn.disabled = false; btn.textContent = '登 录';
+    button.disabled = false;
+    button.textContent = '登 录';
   }
 }
 
-async function handleRegister(e) {
-  e.preventDefault();
-  const btn = $('reg-btn');
-  btn.disabled = true; btn.textContent = '注册中...';
+async function handleRegister(event) {
+  event.preventDefault();
+  const button = $('reg-btn');
+  button.disabled = true;
+  button.textContent = '注册中...';
   $('error-msg').style.display = 'none';
 
   try {
-    const r = await fetch('/api/auth/register', {
+    const response = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -149,14 +157,17 @@ async function handleRegister(e) {
         nickname: $('reg-nickname').value.trim(),
       }),
     });
-    const data = await r.json();
-    if (!data.ok) { showError(data.error || '注册失败'); return; }
-    const redirect = new URLSearchParams(location.search).get('next') || '/ashare';
-    location.href = redirect;
-  } catch (e) {
-    showError('网络错误: ' + e.message);
+    const data = await response.json();
+    if (!data.ok) {
+      showError(data.error || '注册失败');
+      return;
+    }
+    enterDashboard();
+  } catch (error) {
+    showError('网络错误: ' + error.message);
   } finally {
-    btn.disabled = false; btn.textContent = '注 册';
+    button.disabled = false;
+    button.textContent = '注 册';
   }
 }
 </script>

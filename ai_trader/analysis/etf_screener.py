@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from .data_fetcher import fetch_etf_history
+from .data_fetcher import fetch_etf_history, fetch_realtime_quotes
 
 
 def screen_etfs(
@@ -115,6 +115,23 @@ def screen_etfs(
     # 按快速得分排序，取前4个做深度检测（减少K线API调用）
     quick_candidates.sort(key=lambda x: x["quick_score"], reverse=True)
     deep_check = quick_candidates[:4]
+    realtime = fetch_realtime_quotes([c["code"] for c in deep_check])
+    verified = []
+    for candidate in deep_check:
+        quote = realtime.get(candidate["code"])
+        if not quote or not quote.get("is_fresh"):
+            continue
+        verified.append({
+            **candidate,
+            "price": quote["price"],
+            "current_price": quote["price"],
+            "change_pct": None,
+            "quote_time": quote["quote_time"],
+            "quote_age_seconds": quote["age_seconds"],
+            "quote_source": quote["source"],
+            "market_status": quote["market_status"],
+        })
+    deep_check = verified
 
     # —— 第二轮：并行 K 线数据做深度回踩检测 ——
     final = []
@@ -133,19 +150,6 @@ def screen_etfs(
             except Exception:
                 pass
 
-    # 如果深度检测结果太少，把初筛高分的也加进来（标记为"趋势跟踪"而非回踩）
-    if len(final) < 3:
-        for c in deep_check:
-            if c["code"] not in {f["code"] for f in final}:
-                c.pop("quick_score", None)
-                final.append({
-                    **c,
-                    "ma20": None, "ma60": None, "high_20d": None,
-                    "dist_to_high_pct": 0, "dist_to_ma20_pct": 0,
-                    "volume_ok": True, "pullback_score": c.get("quick_score", 1),
-                    "trend_label": "趋势跟踪",
-                })
-
     final.sort(key=lambda x: x.get("pullback_score", 0), reverse=True)
     return final[:min(max_candidates, 8)]
 
@@ -158,34 +162,15 @@ def _check_pullback(code: str, current_price: float) -> tuple[bool, dict]:
     """检测 ETF 是否处于健康的回踩买点。"""
     df = fetch_etf_history(code, days=120)
     if df is None or df.empty:
-        # K线数据不可用，用当前价保守估算
-        # 距MA20估计2%，距高点估计-3%（假设温和回踩中）
-        return True, {
-            "ma20": round(current_price * 0.98, 3),
-            "ma60": round(current_price * 0.95, 3),
-            "high_20d": round(current_price * 1.03, 3),
-            "dist_to_high_pct": -3.0,
-            "dist_to_ma20_pct": 2.0,
-            "volume_ok": True,
-            "pullback_score": 7.0,
-            "trend_label": "实时行情(估)",
-        }
+        return False, {}
 
     close_col = _find_col(df, ["收盘", "close", "收盘价"])
     if close_col is None:
-        return True, {
-            "ma20": None, "ma60": None, "high_20d": None,
-            "dist_to_high_pct": 0, "dist_to_ma20_pct": 0,
-            "volume_ok": True, "pullback_score": 0.3, "trend_label": "数据缺失",
-        }
+        return False, {}
 
     close = pd.to_numeric(df[close_col], errors="coerce").dropna().values
     if len(close) < 20:
-        return True, {
-            "ma20": None, "ma60": None, "high_20d": None,
-            "dist_to_high_pct": 0, "dist_to_ma20_pct": 0,
-            "volume_ok": True, "pullback_score": 0.2, "trend_label": "数据不足",
-        }
+        return False, {}
 
     ma20 = float(pd.Series(close).rolling(20).mean().iloc[-1])
     ma60 = float(pd.Series(close).rolling(min(60, len(close))).mean().iloc[-1]) if len(close) >= 60 else ma20

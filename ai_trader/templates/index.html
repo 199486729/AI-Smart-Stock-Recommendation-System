@@ -183,7 +183,10 @@ input:checked + .slider:before { transform: translateX(18px); }
 
 <div class="header">
   <h1>AlphaMind AI 智能交易系统</h1>
-  <div class="status" id="status">加载中...</div>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div class="status" id="status">加载中...</div>
+    <button onclick="logoutUser()" style="padding:7px 12px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">退出</button>
+  </div>
 </div>
 
 <div class="grid">
@@ -270,6 +273,11 @@ input:checked + .slider:before { transform: translateX(18px); }
 </div>
 
 <script>
+async function logoutUser() {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  location.href = '/login';
+}
+
 const $ = id => document.getElementById(id);
 
 // 趋势中文映射

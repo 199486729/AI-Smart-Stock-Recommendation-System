@@ -1,10 +1,20 @@
 """AlphaMind AI Trader V2 — Web Dashboard（含认证 + 持久化）。"""
 
 import json
+import functools
 import os
 import threading
 import time
 from datetime import datetime, timedelta
+
+# 加载 .env
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 from anthropic import Anthropic
 from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, g
@@ -12,7 +22,7 @@ from flask import Flask, jsonify, render_template, request, Response, session, r
 from ai_trader.agent.market_agent import MarketAgent
 from ai_trader.agent.signal_agent import SignalAgent
 from ai_trader.execution.paper_broker import PaperBroker
-from ai_trader.analysis.data_fetcher import fetch_all_data
+from ai_trader.analysis.data_fetcher import fetch_all_data, get_realtime_status
 from ai_trader.analysis.market_state import compute_market_state
 from ai_trader.analysis.sector_ranker import rank_sectors
 from ai_trader.analysis.etf_screener import screen_etfs
@@ -29,7 +39,9 @@ from ai_trader.persistence import (
 )
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "alphamind-dev-key-change-in-production")
+app.secret_key = os.environ.get("FLASK_SECRET_KEY")
+if not app.secret_key:
+    raise RuntimeError("缺少 FLASK_SECRET_KEY，请在 .env 或系统环境变量中配置")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
 
 # 注册认证蓝图
@@ -73,7 +85,6 @@ def _check_auth():
     # 静态资源不加限制
     if path.startswith("/static/"):
         return
-    # 页面路由：未登录重定向到登录页
     if not session.get("user_id"):
         return redirect(url_for("login_page"))
 
@@ -243,6 +254,44 @@ _latest_market_state = None
 _latest_sectors = None
 _latest_recs = None
 _ms_lock = threading.Lock()
+_analysis_run_lock = threading.Lock()
+_analysis_cache_lock = threading.Lock()
+_analysis_cache = None
+_analysis_cache_at = 0.0
+_ANALYSIS_CACHE_SECONDS = 30
+
+
+def _cached_analysis(reason: str, allow_stale: bool = False):
+    with _analysis_cache_lock:
+        if not _analysis_cache:
+            return None
+        age = time.monotonic() - _analysis_cache_at
+        if not allow_stale and age >= _ANALYSIS_CACHE_SECONDS:
+            return None
+        payload = dict(_analysis_cache)
+    payload["cached"] = True
+    payload["cache_reason"] = reason
+    payload["cache_age_seconds"] = round(age, 1)
+    payload["cooldown_remaining"] = max(0, int(_ANALYSIS_CACHE_SECONDS - age))
+    return jsonify(payload)
+
+
+def analysis_singleflight(f):
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        cached = _cached_analysis("30秒内复用最近分析")
+        if cached is not None:
+            return cached
+        if not _analysis_run_lock.acquire(blocking=False):
+            cached = _cached_analysis("已有分析任务正在运行", allow_stale=True)
+            if cached is not None:
+                return cached
+            return jsonify({"ok": False, "error": "市场分析正在生成，请稍后刷新", "code": "ANALYSIS_BUSY"}), 429
+        try:
+            return f(*args, **kwargs)
+        finally:
+            _analysis_run_lock.release()
+    return wrapper
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +312,9 @@ def api_ashare_state():
 
 @app.route("/api/ashare/analyze", methods=["POST"])
 @login_required
+@analysis_singleflight
 def api_ashare_analyze():
-    global _latest_market_state, _latest_sectors, _latest_recs
+    global _latest_market_state, _latest_sectors, _latest_recs, _analysis_cache, _analysis_cache_at
     user_id = session["user_id"]
 
     try:
@@ -310,6 +360,10 @@ def api_ashare_analyze():
             etfs=all_data.get("etfs"),
         )
 
+        realtime_status = get_realtime_status()
+        data_quality["stock_spot_ok"] = realtime_status.get("ok", False)
+        data_quality["realtime"] = realtime_status
+
         recs = generate_recommendations(
             market_state=market_state,
             top_sectors=sector_result.get("top_sectors", []),
@@ -332,7 +386,7 @@ def api_ashare_analyze():
             _latest_sectors = top_sectors
             _latest_recs = recs
 
-        return jsonify({
+        payload = {
             "ok": True,
             "market_state": market_state,
             "ranked_sectors": top_sectors,
@@ -342,7 +396,13 @@ def api_ashare_analyze():
             "data_quality": data_quality,
             "last_updated": update_time,
             "elapsed": all_data.get("elapsed", 0),
-        })
+            "cached": False,
+            "cooldown_remaining": _ANALYSIS_CACHE_SECONDS,
+        }
+        with _analysis_cache_lock:
+            _analysis_cache = dict(payload)
+            _analysis_cache_at = time.monotonic()
+        return jsonify(payload)
 
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500

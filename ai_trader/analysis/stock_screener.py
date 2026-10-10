@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 
-from .data_fetcher import fetch_stock_history
+from .data_fetcher import fetch_stock_history, fetch_realtime_quotes
 
 logger = logging.getLogger("stock_screener")
 
@@ -134,11 +134,31 @@ def screen_stocks(
 
     # —— 并行 K 线深度分析 ——
     deep_checks = unique_seeds[:max_deep_checks]
+    realtime = fetch_realtime_quotes([s["code"] for s in deep_checks])
+    fresh_checks = []
+    for stock in deep_checks:
+        quote = realtime.get(str(stock["code"]))
+        if not quote or not quote.get("is_fresh"):
+            logger.warning("跳过 %s：缺少有效实时行情", stock["code"])
+            continue
+        fresh_checks.append({
+            **stock,
+            "current_price": quote["price"],
+            "quote_time": quote["quote_time"],
+            "quote_age_seconds": quote["age_seconds"],
+            "quote_source": quote["source"],
+            "market_status": quote["market_status"],
+        })
+
+    if not fresh_checks:
+        logger.warning("无有效实时行情，停止生成个股推荐")
+        return []
+
     candidates = []
     with ThreadPoolExecutor(max_workers=3) as executor:
         future_map = {
             executor.submit(_deep_analyze, s["code"], s.get("current_price", 0)): s
-            for s in deep_checks
+            for s in fresh_checks
         }
         for future in as_completed(future_map, timeout=90):
             stock = future_map[future]

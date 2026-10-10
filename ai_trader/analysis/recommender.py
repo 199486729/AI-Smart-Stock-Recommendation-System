@@ -187,6 +187,10 @@ def _build_recommendation(
         "technical": technical,
         "reasoning": reasoning,
         "confidence": confidence,
+        "quote_time": c.get("quote_time"),
+        "quote_age_seconds": c.get("quote_age_seconds"),
+        "quote_source": c.get("quote_source"),
+        "market_status": c.get("market_status"),
     }
 
 

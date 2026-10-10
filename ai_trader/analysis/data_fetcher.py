@@ -4,6 +4,8 @@
 """
 
 import logging
+import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -13,6 +15,239 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format="[%(name)s] %(message)s")
 logger = logging.getLogger("data_fetcher")
+_REALTIME_SOURCE = "新浪实时行情 via AkShare"
+_SINA_SPOT_CACHE_SECONDS = 60
+_last_realtime_status = {"ok": False, "source": _REALTIME_SOURCE, "quote_count": 0}
+_sina_spot_cache: dict[str, dict] = {}
+_sina_spot_cache_at = 0.0
+_sina_spot_lock = threading.Lock()
+_sina_etf_cache: dict[str, dict] = {}
+_sina_etf_cache_at = 0.0
+_sina_etf_lock = threading.Lock()
+
+
+def get_realtime_status() -> dict:
+    return dict(_last_realtime_status)
+
+
+def _to_ts_code(symbol: str) -> str:
+    code = str(symbol).strip().upper()
+    if "." in code:
+        left, right = code.split(".", 1)
+        if left.isdigit():
+            return f"{left}.{right}"
+    code = code.removeprefix("SH").removeprefix("SZ").removeprefix("BJ")
+    if code.startswith(("4", "8")):
+        suffix = "BJ"
+    elif code.startswith(("5", "6", "9")):
+        suffix = "SH"
+    else:
+        suffix = "SZ"
+    return f"{code}.{suffix}"
+
+
+def _market_status(now: datetime) -> str:
+    if now.weekday() >= 5:
+        return "closed"
+    hm = now.hour * 60 + now.minute
+    if 570 <= hm <= 690 or 780 <= hm <= 900:
+        return "trading"
+    if 690 < hm < 780:
+        return "lunch_break"
+    return "closed"
+
+
+def _normalize_stock_code(symbol: str) -> str:
+    code = str(symbol).strip().upper()
+    if "." in code:
+        parts = code.split(".")
+        code = parts[0] if parts[0].isdigit() else parts[-1]
+    return code.removeprefix("SH").removeprefix("SZ").removeprefix("BJ")
+
+
+def _load_sina_spot_cache() -> tuple[dict[str, dict], float]:
+    """全站最多每60秒请求一次新浪全市场快照。"""
+    global _sina_spot_cache, _sina_spot_cache_at
+    cache_age = time.monotonic() - _sina_spot_cache_at
+    if _sina_spot_cache and cache_age < _SINA_SPOT_CACHE_SECONDS:
+        return _sina_spot_cache, cache_age
+
+    acquired = _sina_spot_lock.acquire(blocking=False)
+    if not acquired:
+        if _sina_spot_cache:
+            return _sina_spot_cache, cache_age
+        with _sina_spot_lock:
+            return _sina_spot_cache, time.monotonic() - _sina_spot_cache_at
+
+    try:
+        cache_age = time.monotonic() - _sina_spot_cache_at
+        if _sina_spot_cache and cache_age < _SINA_SPOT_CACHE_SECONDS:
+            return _sina_spot_cache, cache_age
+
+        import akshare as ak
+        df = ak.stock_zh_a_spot()
+        if df is None or df.empty:
+            raise RuntimeError("新浪全市场行情返回空数据")
+
+        refreshed = {}
+        for _, row in df.iterrows():
+            code = _normalize_stock_code(row.get("代码", ""))
+            if code:
+                refreshed[code] = row.to_dict()
+        _sina_spot_cache = refreshed
+        _sina_spot_cache_at = time.monotonic()
+        return _sina_spot_cache, 0.0
+    except Exception as exc:
+        logger.warning("新浪实时行情失败: %s", exc)
+        return _sina_spot_cache, time.monotonic() - _sina_spot_cache_at
+    finally:
+        _sina_spot_lock.release()
+
+
+def _load_sina_etf_cache() -> tuple[dict[str, dict], float]:
+    """全站最多每60秒请求一次新浪 ETF 快照。"""
+    global _sina_etf_cache, _sina_etf_cache_at
+    cache_age = time.monotonic() - _sina_etf_cache_at
+    if _sina_etf_cache and cache_age < _SINA_SPOT_CACHE_SECONDS:
+        return _sina_etf_cache, cache_age
+    with _sina_etf_lock:
+        cache_age = time.monotonic() - _sina_etf_cache_at
+        if _sina_etf_cache and cache_age < _SINA_SPOT_CACHE_SECONDS:
+            return _sina_etf_cache, cache_age
+        try:
+            import akshare as ak
+            df = ak.fund_etf_category_sina(symbol="ETF基金")
+            if df is None or df.empty:
+                raise RuntimeError("新浪 ETF 行情返回空数据")
+            fetched_at = datetime.now()
+            refreshed = {}
+            for _, source_row in df.iterrows():
+                row = source_row.to_dict()
+                code = _normalize_stock_code(row.get("代码", ""))
+                if code:
+                    row["时间戳"] = fetched_at.strftime("%H:%M:%S")
+                    refreshed[code] = row
+            _sina_etf_cache = refreshed
+            _sina_etf_cache_at = time.monotonic()
+            return _sina_etf_cache, 0.0
+        except Exception as exc:
+            logger.warning("新浪 ETF 实时行情失败: %s", exc)
+            return _sina_etf_cache, time.monotonic() - _sina_etf_cache_at
+
+
+def _sina_quote_datetime(value, now: datetime) -> datetime | None:
+    try:
+        parsed = datetime.strptime(str(value), "%H:%M:%S").time()
+        quote_time = datetime.combine(now.date(), parsed)
+        if quote_time > now + timedelta(minutes=1):
+            quote_time -= timedelta(days=1)
+        return quote_time
+    except Exception:
+        return None
+
+
+def fetch_realtime_quotes(symbols: list[str], max_age_seconds: int = 120) -> dict[str, dict]:
+    """从60秒共享的新浪全市场快照中提取指定股票/ETF。"""
+    global _last_realtime_status
+    if not symbols:
+        return {}
+
+    data, stock_cache_age = _load_sina_spot_cache()
+    requested_codes = [_normalize_stock_code(symbol) for symbol in symbols]
+    missing_codes = [code for code in requested_codes if code not in data]
+    etf_data, etf_cache_age = ({}, 0.0)
+    if missing_codes:
+        etf_data, etf_cache_age = _load_sina_etf_cache()
+    now = datetime.now()
+    status = _market_status(now)
+    result = {}
+    for symbol in symbols:
+        code = _normalize_stock_code(symbol)
+        row = data.get(code) or etf_data.get(code)
+        if not row:
+            continue
+        cache_age = etf_cache_age if code in etf_data and code not in data else stock_cache_age
+        quote_time = _sina_quote_datetime(row.get("时间戳"), now)
+        if quote_time is None:
+            continue
+        age_seconds = max(0, int((now - quote_time).total_seconds()))
+
+        if status == "trading":
+            is_fresh = age_seconds <= max_age_seconds
+        elif status == "lunch_break":
+            is_fresh = quote_time.date() == now.date() and quote_time.hour == 11 and quote_time.minute >= 29
+        else:
+            after_close = now.weekday() < 5 and (now.hour * 60 + now.minute) > 900
+            is_fresh = after_close and quote_time.date() == now.date() and quote_time.hour >= 15
+
+        def number(key, default=0.0):
+            value = pd.to_numeric(row.get(key), errors="coerce")
+            return default if pd.isna(value) else float(value)
+
+        result[code] = {
+            "code": code,
+            "name": str(row.get("名称", "")),
+            "price": number("最新价"),
+            "pre_close": number("昨收"),
+            "change": number("涨跌额"),
+            "change_pct": number("涨跌幅"),
+            "open": number("今开"),
+            "high": number("最高"),
+            "low": number("最低"),
+            "volume": number("成交量"),
+            "amount": number("成交额"),
+            "quote_time": quote_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "age_seconds": age_seconds,
+            "cache_age_seconds": round(cache_age, 1),
+            "market_status": status,
+            "is_fresh": is_fresh,
+            "source": _REALTIME_SOURCE,
+        }
+
+    fresh_count = sum(1 for q in result.values() if q["is_fresh"])
+    _last_realtime_status = {
+        "ok": fresh_count > 0,
+        "source": _REALTIME_SOURCE,
+        "quote_count": len(result),
+        "fresh_count": fresh_count,
+        "cache_age_seconds": round(cache_age, 1),
+        "checked_at": now.isoformat(timespec="seconds"),
+    }
+    return result
+
+
+def fetch_stock_reference(symbol: str) -> dict:
+    """用 Tushare 补充股票名称及当前交易日的昨收基准。"""
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if not token:
+        return {}
+    try:
+        import tushare as ts
+        pro = ts.pro_api(token)
+        ts_code = _to_ts_code(symbol)
+        result = {}
+
+        basic = pro.stock_basic(ts_code=ts_code, fields="ts_code,name")
+        if basic is not None and not basic.empty:
+            result["name"] = str(basic.iloc[0]["name"])
+
+        now = datetime.now()
+        daily = pro.daily(
+            ts_code=ts_code,
+            start_date=(now - timedelta(days=15)).strftime("%Y%m%d"),
+            end_date=now.strftime("%Y%m%d"),
+        )
+        if daily is not None and not daily.empty:
+            row = daily.sort_values("trade_date", ascending=False).iloc[0]
+            if str(row["trade_date"]) == now.strftime("%Y%m%d"):
+                result["pre_close"] = float(row["pre_close"])
+            else:
+                result["pre_close"] = float(row["close"])
+            result["reference_trade_date"] = str(row["trade_date"])
+        return result
+    except Exception as exc:
+        logger.warning("Tushare股票基础数据失败: %s", exc)
+        return {}
 
 # ---------------------------------------------------------------------------
 # 工具函数
@@ -87,10 +322,15 @@ KEY_INDICES = {
 
 
 def fetch_indices() -> dict | None:
-    """拉取关键指数日线数据，计算 MA 和趋势。"""
+    """新浪实时指数作为当前点位，日线仅用于 MA 与趋势计算。"""
     import akshare as ak
     result = {}
     errors = []
+    spot = _safe_call("新浪实时指数", ak.stock_zh_index_spot_sina)
+    spot_by_code = {}
+    if spot is not None and not spot.empty and "代码" in spot.columns:
+        spot_by_code = {str(row["代码"]): row for _, row in spot.iterrows()}
+
     for name, symbol in KEY_INDICES.items():
         df = _safe_call(f"指数-{name}", ak.stock_zh_index_daily, symbol)
         if df is None:
@@ -100,8 +340,12 @@ def fetch_indices() -> dict | None:
         vol = df["volume"].values.astype(float)
         mas = _compute_mas(close)
 
-        # 涨跌幅
-        if len(close) >= 2:
+        realtime = spot_by_code.get(symbol)
+        realtime_price = float(realtime["最新价"]) if realtime is not None else None
+        price = realtime_price if realtime_price and realtime_price > 0 else float(close[-1])
+        if realtime is not None:
+            change_pct = round(float(realtime["涨跌幅"]), 2)
+        elif len(close) >= 2:
             change_pct = round((close[-1] - close[-2]) / close[-2] * 100, 2)
         else:
             change_pct = 0.0
@@ -115,21 +359,24 @@ def fetch_indices() -> dict | None:
         # 20日高点距离
         if len(close) >= 20:
             high_20d = float(np.max(close[-20:]))
-            dist_to_high_20d = round((mas["price"] - high_20d) / high_20d * 100, 2)
+            dist_to_high_20d = round((price - high_20d) / high_20d * 100, 2)
         else:
             dist_to_high_20d = None
 
         result[name] = {
             "symbol": symbol,
-            "price": round(mas["price"], 2),
+            "price": round(price, 2),
             "change_pct": change_pct,
             "change_5d": change_5d,
             "ma20": round(mas["ma20"], 2) if mas["ma20"] else None,
             "ma60": round(mas["ma60"], 2) if mas["ma60"] else None,
-            "above_ma20": mas["above_ma20"],
-            "above_ma60": mas["above_ma60"],
+            "above_ma20": (price > mas["ma20"]) if mas.get("ma20") else None,
+            "above_ma60": (price > mas["ma60"]) if mas.get("ma60") else None,
             "dist_to_high_20d": dist_to_high_20d,
-            "volume": int(vol[-1]) if len(vol) > 0 else 0,
+            "volume": int(realtime["成交量"]) if realtime is not None else (int(vol[-1]) if len(vol) > 0 else 0),
+            "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if realtime is not None else None,
+            "quote_source": "新浪实时指数" if realtime is not None else "指数日线降级",
+            "is_realtime": realtime is not None,
         }
 
     if errors:
@@ -358,12 +605,29 @@ def _bs_fetch_history(symbol: str, start: str, end: str) -> pd.DataFrame | None:
 
 
 def fetch_stock_history(symbol: str, days: int = 120) -> pd.DataFrame | None:
-    """拉取个股日线历史（前复权）。akshare 优先，被限流时降级到 baostock。"""
+    """拉取个股日线历史（前复权）。Tushare 优先，失败时降级。"""
     import akshare as ak
     end = datetime.now().strftime("%Y%m%d")
     start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
 
-    # 先尝试 akshare
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if token:
+        try:
+            import tushare as ts
+            pro = ts.pro_api(token)
+            df = ts.pro_bar(
+                ts_code=_to_ts_code(symbol),
+                api=pro,
+                adj="qfq",
+                start_date=start,
+                end_date=end,
+            )
+            if df is not None and not df.empty:
+                return df.sort_values("trade_date").reset_index(drop=True)
+        except Exception as exc:
+            logger.warning("Tushare个股日线失败 %s: %s", symbol, exc)
+
+    # Tushare 暂时不可用时再尝试 AkShare。
     df = _safe_call_no_retry(f"个股K线-{symbol}", ak.stock_zh_a_hist, symbol, "daily", start, end, "qfq")
     if df is not None and not df.empty:
         return df
@@ -373,10 +637,24 @@ def fetch_stock_history(symbol: str, days: int = 120) -> pd.DataFrame | None:
 
 
 def fetch_etf_history(symbol: str, days: int = 120) -> pd.DataFrame | None:
-    """拉取 ETF 日线历史。不重试，K线限流时立即降级。"""
+    """拉取 ETF 日线历史。Tushare 优先，失败时降级到 AkShare。"""
     import akshare as ak
     end = datetime.now().strftime("%Y%m%d")
     start = (datetime.now() - timedelta(days=days + 10)).strftime("%Y%m%d")
+    token = os.environ.get("TUSHARE_TOKEN", "")
+    if token:
+        try:
+            import tushare as ts
+            pro = ts.pro_api(token)
+            df = pro.fund_daily(
+                ts_code=_to_ts_code(symbol),
+                start_date=start,
+                end_date=end,
+            )
+            if df is not None and not df.empty:
+                return df.sort_values("trade_date").reset_index(drop=True)
+        except Exception as exc:
+            logger.warning("Tushare ETF日线失败 %s: %s", symbol, exc)
     return _safe_call_no_retry(f"ETF K线-{symbol}", ak.fund_etf_hist_em, symbol, "daily", start, end, "")
 
 

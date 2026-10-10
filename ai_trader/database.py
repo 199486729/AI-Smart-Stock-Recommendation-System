@@ -11,12 +11,20 @@ import os
 import pymysql
 from contextlib import contextmanager
 
+# 加载 .env 文件（如果存在）
+try:
+    from dotenv import load_dotenv
+    _env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path)
+except ImportError:
+    pass
 
 _DB_CONFIG = {
     "host": os.environ.get("MYSQL_HOST", "127.0.0.1"),
     "port": int(os.environ.get("MYSQL_PORT", "3306")),
     "user": os.environ.get("MYSQL_USER", "root"),
-    "password": os.environ.get("MYSQL_PASSWORD", "ichigo"),
+    "password": os.environ.get("MYSQL_PASSWORD", ""),
     "database": os.environ.get("MYSQL_DATABASE", "alphamind_trader"),
     "charset": "utf8mb4",
     "cursorclass": pymysql.cursors.DictCursor,

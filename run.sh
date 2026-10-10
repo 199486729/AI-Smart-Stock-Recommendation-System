@@ -45,9 +45,9 @@ stop_one() {
 
 health() {
     local port=$1
-    if curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${port}/ashare" 2>/dev/null; then
-        :
-    fi
+    local code
+    code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 "http://127.0.0.1:${port}/ashare" 2>/dev/null || echo "000")
+    echo "$code"
 }
 
 wait_ready() {
@@ -56,7 +56,7 @@ wait_ready() {
     for _ in $(seq 1 $max); do
         local code
         code=$(health "$port")
-        if [ "$code" = "200" ]; then
+        if [ "$code" = "200" ] || [ "$code" = "302" ]; then
             echo " OK (HTTP $code)"
             return 0
         fi
@@ -109,7 +109,7 @@ status() {
         local code
         code=$(health "$port" || echo "000")
         local label="DOWN"
-        [ "$code" = "200" ] && label="UP"
+        [ "$code" = "200" ] || [ "$code" = "302" ] && label="UP"
         echo "  :$port → HTTP $code [$label]"
     done
 }

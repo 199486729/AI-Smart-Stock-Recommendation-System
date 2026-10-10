@@ -7,3 +7,5 @@ bcrypt>=4.0
 numpy>=1.24.0
 pandas>=2.0.0
 yfinance>=0.2.40
+tushare>=1.4.29
+python-dotenv>=1.0.0

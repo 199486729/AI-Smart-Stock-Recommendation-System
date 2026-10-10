@@ -1,14 +1,13 @@
 """个股实时数据 — 为 AI 聊天提供 MCP 工具调用。
 
-使用 akshare stock_zh_a_spot_em 获取全市场实时快照，
-支持个股/ETF 查询。数据延迟约 3-5 分钟。
+使用 AkShare 新浪全市场快照，并通过服务器共享缓存控制请求频率。
 """
 
 import logging
 import numpy as np
 import pandas as pd
 
-from .data_fetcher import fetch_stock_history
+from .data_fetcher import fetch_stock_history, fetch_realtime_quotes
 
 logger = logging.getLogger("stock_realtime")
 
@@ -22,48 +21,32 @@ def get_stock_realtime(code: str) -> dict:
     Returns:
         dict with price, change_pct, volume, turnover, ma, trend, etc.
     """
-    try:
-        import akshare as ak
-    except ImportError:
-        return {"error": "akshare 未安装，无法获取实时行情"}
-
     # 标准化代码
     code = str(code).strip()
     if "." in code:
-        code = code.split(".")[-1]
+        parts = code.split(".")
+        code = parts[0] if parts[0].isdigit() else parts[-1]
+    code = code.lower().removeprefix("sh").removeprefix("sz").removeprefix("bj")
 
-    try:
-        df = ak.stock_zh_a_spot_em()
-    except Exception as e:
-        return {"error": f"获取全市场行情失败: {e}"}
-
-    code_col = None
-    for col in ["代码", "code"]:
-        if col in df.columns:
-            code_col = col
-            break
-    if code_col is None:
-        return {"error": "无法解析行情数据格式"}
-
-    row = df[df[code_col] == code]
-    if row.empty:
-        return {"error": f"未找到股票 {code}，请检查代码是否正确（如 600519）"}
-
-    r = row.iloc[0]
-
-    name = _safe_str(r, ["名称", "name"])
-    price = _safe_float(r, ["最新价", "price", "c"])
-    change_pct = _safe_float(r, ["涨跌幅", "change_pct", "pct_chg"])
-    change_amt = _safe_float(r, ["涨跌额", "change", "change_amount"])
-    volume = _safe_float(r, ["成交量", "volume", "vol"])
-    amount = _safe_float(r, ["成交额", "amount", "turnover"])
-    turnover = _safe_float(r, ["换手率", "turnover_rate", "turn"])
-    high = _safe_float(r, ["最高", "high", "h"])
-    low = _safe_float(r, ["最低", "low", "l"])
-    open_ = _safe_float(r, ["今开", "open", "o"])
-    pre_close = _safe_float(r, ["昨收", "pre_close", "preclose"])
-    pe = _safe_float(r, ["市盈率-动态", "pe", "peTTM"])
-    total_mv = _safe_float(r, ["总市值", "total_mv", "market_cap"])
+    quote = fetch_realtime_quotes([code]).get(code)
+    if not quote:
+        return {"error": "新浪实时行情不可用，已停止使用旧价格分析"}
+    if not quote.get("is_fresh"):
+        return {
+            "error": "实时行情已过期，已停止使用旧价格分析",
+            "quote_time": quote.get("quote_time"),
+            "market_status": quote.get("market_status"),
+        }
+    name = quote.get("name")
+    price = quote["price"]
+    pre_close = quote.get("pre_close")
+    change_amt = quote.get("change")
+    change_pct = quote.get("change_pct")
+    volume = quote.get("volume")
+    amount = quote.get("amount")
+    high = quote.get("high")
+    low = quote.get("low")
+    open_ = quote.get("open")
 
     # K线技术面摘要
     tech = {}
@@ -125,11 +108,23 @@ def get_stock_realtime(code: str) -> dict:
         "high": round(high, 2) if high else None,
         "low": round(low, 2) if low else None,
         "pre_close": round(pre_close, 2) if pre_close else None,
-        "volume_hands": int(volume) if volume else None,
+        "volume_hands": int(volume / 100) if volume else None,
         "amount_yuan": round(amount, 2) if amount else None,
-        "turnover_rate": round(turnover, 2) if turnover is not None else None,
-        "pe": round(pe, 2) if pe is not None else None,
-        "total_mv": round(total_mv / 1e8, 2) if total_mv and total_mv > 0 else None,  # 亿
+        "turnover_rate": None,
+        "pe": None,
+        "total_mv": None,
+        "quote_time": quote["quote_time"],
+        "quote_age_seconds": quote["age_seconds"],
+        "quote_source": quote["source"],
+        "market_status": quote["market_status"],
+        "session_quote": {
+            "open": round(quote["open"], 2),
+            "high": round(quote["high"], 2),
+            "low": round(quote["low"], 2),
+            "close": round(quote["price"], 2),
+            "volume": quote["volume"],
+            "amount": quote["amount"],
+        },
     }
     if tech:
         result["technical"] = tech
