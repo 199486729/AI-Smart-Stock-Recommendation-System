@@ -381,6 +381,12 @@ def api_ashare_analyze():
 
         update_time = datetime.now().isoformat()
         top_sectors = sector_result.get("top_sectors", [])
+        market_session = all_data.get("market_session") or {}
+        sector_meta = {
+            "source": sector_result.get("source", "未知"),
+            "data_date": market_session.get("data_date", "未知"),
+            "date_note": market_session.get("notice", ""),
+        }
 
         # ── 持久化推荐快照 ──
         try:
@@ -398,8 +404,10 @@ def api_ashare_analyze():
             "ok": True,
             "market_state": market_state,
             "ranked_sectors": top_sectors,
+            "sector_meta": sector_meta,
             "focus_sectors": sector_result.get("focus_in_top", []),
             "recommendations": recs,
+            "market_session": market_session,
             "screened_stocks": screened_stocks,
             "data_quality": data_quality,
             "last_updated": update_time,

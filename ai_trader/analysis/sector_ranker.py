@@ -111,7 +111,8 @@ def _rank_from_boards(df: pd.DataFrame, top_n: int) -> dict:
             "rank": rank,
             "name": name,
             "change_pct": round(float(pcts[idx]), 2),
-            "fund_flow": round(float(flows[idx]), 2) if flow_col else 0,
+            # stock_board_change_em 的主力净流入以万元返回，页面统一展示为亿元。
+            "fund_flow": round(float(flows[idx]) / 10000, 2) if flow_col else 0,
             "anomaly_count": int(anomalies[idx]) if anomaly_col else 0,
             "volume": round(float(volumes[idx]), 2) if volume_col else 0,
             "score": round(float(scores[idx]), 2),

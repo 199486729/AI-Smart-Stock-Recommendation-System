@@ -24,6 +24,10 @@ _sina_spot_lock = threading.Lock()
 _sina_etf_cache: dict[str, dict] = {}
 _sina_etf_cache_at = 0.0
 _sina_etf_lock = threading.Lock()
+_trade_calendar_cache: set = set()
+_trade_calendar_cache_at = 0.0
+_trade_calendar_lock = threading.Lock()
+_TRADE_CALENDAR_CACHE_SECONDS = 12 * 60 * 60
 
 
 def get_realtime_status() -> dict:
@@ -55,6 +59,98 @@ def _market_status(now: datetime) -> str:
     if 690 < hm < 780:
         return "lunch_break"
     return "closed"
+
+
+def _load_trade_calendar() -> set:
+    """加载并缓存 A 股交易日历；失败时由调用方降级到工作日判断。"""
+    global _trade_calendar_cache, _trade_calendar_cache_at
+    age = time.monotonic() - _trade_calendar_cache_at
+    if _trade_calendar_cache and age < _TRADE_CALENDAR_CACHE_SECONDS:
+        return set(_trade_calendar_cache)
+
+    with _trade_calendar_lock:
+        age = time.monotonic() - _trade_calendar_cache_at
+        if _trade_calendar_cache and age < _TRADE_CALENDAR_CACHE_SECONDS:
+            return set(_trade_calendar_cache)
+        try:
+            import akshare as ak
+            calendar = ak.tool_trade_date_hist_sina()
+            if calendar is None or calendar.empty or "trade_date" not in calendar.columns:
+                raise RuntimeError("交易日历返回空数据")
+            dates = set(pd.to_datetime(calendar["trade_date"], errors="coerce").dropna().dt.date)
+            if dates:
+                _trade_calendar_cache = dates
+                _trade_calendar_cache_at = time.monotonic()
+                return set(dates)
+        except Exception as exc:
+            logger.warning("交易日历拉取失败: %s", exc)
+        return set(_trade_calendar_cache)
+
+
+def get_market_session(
+    now: datetime | None = None,
+    latest_market_date=None,
+    trade_dates: set | None = None,
+) -> dict:
+    """返回交易时段及行情归属日期，避免把周末快照标成实时数据。"""
+    now = now or datetime.now()
+    today = now.date()
+    dates = set(trade_dates) if trade_dates is not None else _load_trade_calendar()
+    is_trading_day = today in dates if dates else now.weekday() < 5
+
+    latest_trade_date = max((d for d in dates if d <= today), default=None) if dates else None
+    try:
+        observed_date = pd.to_datetime(latest_market_date).date() if latest_market_date else None
+    except Exception:
+        observed_date = None
+
+    hm = now.hour * 60 + now.minute
+    if not is_trading_day:
+        status = "non_trading_day"
+        status_label = "非交易日（周末或节假日）"
+    elif hm < 555:
+        status = "pre_open"
+        status_label = "交易日开盘前"
+    elif hm < 570:
+        status = "call_auction"
+        status_label = "集合竞价"
+    elif hm <= 690 or 780 <= hm <= 900:
+        status = "trading"
+        status_label = "交易中"
+    elif hm < 780:
+        status = "lunch_break"
+        status_label = "午间休市"
+    else:
+        status = "closed"
+        status_label = "交易日已收盘"
+
+    # 盘中板块接口属于当天；其余时间优先使用指数日线实际返回的最近日期。
+    if is_trading_day and status in {"call_auction", "trading", "lunch_break", "closed"}:
+        data_date = today
+    else:
+        data_date = observed_date or latest_trade_date
+
+    date_text = data_date.isoformat() if data_date else "未知"
+    if status == "non_trading_day":
+        notice = f"当前为非交易日，行情沿用最近交易日（{date_text}）快照，实时推荐可能为空。"
+    elif status == "pre_open":
+        notice = f"当前尚未开市，行情可能仍为上一交易日（{date_text}）快照。"
+    elif status == "lunch_break":
+        notice = "当前为午间休市，行情为上午收盘快照。"
+    elif status == "closed":
+        notice = f"当前已收盘，行情日期为 {date_text}。"
+    else:
+        notice = "当前处于交易时段，行情会随数据源更新。"
+
+    return {
+        "status": status,
+        "status_label": status_label,
+        "is_trading_day": is_trading_day,
+        "is_trading_time": status in {"call_auction", "trading"},
+        "data_date": date_text,
+        "notice": notice,
+        "trading_hours": "A股交易日：集合竞价 9:15–9:25；连续交易 9:30–11:30、13:00–15:00（周末及法定节假日休市）",
+    }
 
 
 def _normalize_stock_code(symbol: str) -> str:
@@ -331,6 +427,8 @@ def fetch_indices() -> dict | None:
     if spot is not None and not spot.empty and "代码" in spot.columns:
         spot_by_code = {str(row["代码"]): row for _, row in spot.iterrows()}
 
+    now = datetime.now()
+    market_status = _market_status(now)
     for name, symbol in KEY_INDICES.items():
         df = _safe_call(f"指数-{name}", ak.stock_zh_index_daily, symbol)
         if df is None:
@@ -339,6 +437,7 @@ def fetch_indices() -> dict | None:
         close = df["close"].values.astype(float)
         vol = df["volume"].values.astype(float)
         mas = _compute_mas(close)
+        daily_date = pd.to_datetime(df["date"].iloc[-1]).date() if "date" in df.columns else now.date()
 
         realtime = spot_by_code.get(symbol)
         realtime_price = float(realtime["最新价"]) if realtime is not None else None
@@ -363,6 +462,7 @@ def fetch_indices() -> dict | None:
         else:
             dist_to_high_20d = None
 
+        is_live_quote = realtime is not None and market_status in {"trading", "lunch_break"}
         result[name] = {
             "symbol": symbol,
             "price": round(price, 2),
@@ -374,9 +474,10 @@ def fetch_indices() -> dict | None:
             "above_ma60": (price > mas["ma60"]) if mas.get("ma60") else None,
             "dist_to_high_20d": dist_to_high_20d,
             "volume": int(realtime["成交量"]) if realtime is not None else (int(vol[-1]) if len(vol) > 0 else 0),
-            "quote_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S") if realtime is not None else None,
-            "quote_source": "新浪实时指数" if realtime is not None else "指数日线降级",
-            "is_realtime": realtime is not None,
+            "quote_time": now.strftime("%Y-%m-%d %H:%M:%S") if is_live_quote else f"{daily_date.isoformat()} 15:00:00",
+            "quote_source": "新浪实时指数" if is_live_quote else "新浪最近交易日快照",
+            "is_realtime": is_live_quote,
+            "data_date": daily_date.isoformat(),
         }
 
     if errors:
@@ -706,6 +807,7 @@ def fetch_all_data() -> dict:
         "limit_up": None,
         "stock_spot": None,
         "errors": [],
+        "market_session": None,
         "fetch_time": datetime.now().isoformat(),
         "elapsed": 0,
     }
@@ -748,6 +850,14 @@ def fetch_all_data() -> dict:
             result["errors"].append(f"{name}拉取失败")
         elif hasattr(data, "empty") and data.empty:
             result["errors"].append(f"{name}返回空")
+
+    index_dates = [
+        item.get("data_date")
+        for item in (result.get("indices") or {}).values()
+        if item.get("data_date")
+    ]
+    latest_market_date = max(index_dates) if index_dates else None
+    result["market_session"] = get_market_session(latest_market_date=latest_market_date)
 
     result["elapsed"] = round(time.time() - t0, 2)
     logger.info("数据拉取完成，耗时 %.1fs，%d 个错误", result["elapsed"], len(result["errors"]))
