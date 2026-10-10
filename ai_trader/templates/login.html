@@ -107,7 +107,7 @@ function showError(message) {
 
 function enterDashboard() {
   // auto=1 只在本次登录跳转时触发一次自动市场分析。
-  location.href = '/ashare?auto=1';
+  location.href = {{ url_for('ashare') | tojson }} + '?auto=1';
 }
 
 async function handleLogin(event) {

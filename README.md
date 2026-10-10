@@ -33,6 +33,8 @@ cp .env.example .env
 python -c "import secrets; print(secrets.token_hex(32))"
 ```
 
+如需更换分析页面地址，可把 `ASHARE_PATH` 设置为只包含字母、数字、下划线或连字符的私有路径；修改后原 `/ashare` 会返回 404。
+
 初始化数据库：
 
 ```bash

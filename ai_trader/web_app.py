@@ -3,6 +3,7 @@
 import json
 import functools
 import os
+import re
 import threading
 import time
 from datetime import datetime, timedelta
@@ -17,7 +18,7 @@ except ImportError:
     pass
 
 from anthropic import Anthropic
-from flask import Flask, jsonify, render_template, request, Response, session, redirect, url_for, g
+from flask import Flask, abort, jsonify, render_template, request, Response, session, redirect, url_for, g
 
 from ai_trader.agent.market_agent import MarketAgent
 from ai_trader.agent.signal_agent import SignalAgent
@@ -43,6 +44,11 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY")
 if not app.secret_key:
     raise RuntimeError("缺少 FLASK_SECRET_KEY，请在 .env 或系统环境变量中配置")
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+
+_dashboard_slug = os.environ.get("ASHARE_PATH", "ashare").strip().strip("/")
+if not re.fullmatch(r"[A-Za-z0-9_-]{4,64}", _dashboard_slug):
+    raise RuntimeError("ASHARE_PATH 只能包含4至64位字母、数字、下划线或连字符")
+_DASHBOARD_PATH = f"/{_dashboard_slug}"
 
 # 注册认证蓝图
 app.register_blueprint(auth_bp)
@@ -76,6 +82,8 @@ _lock = threading.Lock()
 def _check_auth():
     """非 API 页面需要登录，API 路由由 @login_required 保护。"""
     path = request.path
+    if path == "/ashare" and _DASHBOARD_PATH != "/ashare":
+        abort(404)
     if path.startswith("/api/auth/"):
         return
     if path.startswith("/login"):
@@ -105,7 +113,7 @@ def index():
     return render_template("index.html")
 
 
-@app.route("/ashare")
+@app.route(_DASHBOARD_PATH)
 def ashare():
     return render_template("ashare_dashboard.html")
 
